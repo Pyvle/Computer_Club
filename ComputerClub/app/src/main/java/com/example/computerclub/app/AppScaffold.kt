@@ -25,8 +25,7 @@ fun AppScaffold(
             route.startsWith(Routes.History) ||
             route.startsWith(Routes.Profile)
 
-    val showTopBar =
-        showBottomBar // на auth/splash убираем
+    val showTopBar = showBottomBar && !route.startsWith(Routes.Clubs)
 
     var topUpOpen by remember { mutableStateOf(false) }
 
