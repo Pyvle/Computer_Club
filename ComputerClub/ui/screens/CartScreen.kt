@@ -17,9 +17,11 @@ fun CartScreen(appVm: AppViewModel) {
 
     val booking = appVm.bookingDraft
     val bookingCost = remember(booking.startMin, booking.endMin, booking.selectedSeatIds) {
+        // мок-расчёт: 200₽/час за обычное место, 350₽/час за VIP
         val start = booking.startMin
         val end = booking.endMin
         if (end <= start) 0 else {
+            // округляем вверх до часа
             val minutes = end - start
             val hours = (minutes + 59) / 60
             val seats = FakeData.seatMapByClub[appVm.selectedClubId].orEmpty()

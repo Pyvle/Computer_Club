@@ -8,36 +8,34 @@ import androidx.lifecycle.ViewModel
 import com.example.computerclub.data.FakeData
 import com.example.computerclub.model.*
 import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.Duration
-import java.time.LocalTime
-
-private const val DAY_MIN = 24 * 60
-private const val STEP_MIN = 30
-private const val MIN_GAP_MIN = 60L
 
 
 
 class AppViewModel : ViewModel() {
 
+    // Auth / Profile
     var user: User? by mutableStateOf(null)
         private set
 
     var balance: Int by mutableStateOf(0)
         private set
 
+    // Shared club selection (Booking + Shop)
     var selectedClubId: String by mutableStateOf(FakeData.clubs.first().id)
         private set
 
     var clubConfirmed: Boolean by mutableStateOf(false)
         private set
 
+    // Booking draft (selection before going to cart)
     var bookingDraft: BookingDraft by mutableStateOf(BookingDraft(clubId = selectedClubId))
         private set
 
+    // Cart products
     var cartLines: List<CartProductLine> by mutableStateOf(emptyList())
         private set
 
+    // Current session mock
     var currentSession: CurrentSessionSummary? by mutableStateOf(null)
         private set
 
@@ -54,13 +52,13 @@ class AppViewModel : ViewModel() {
     fun login(username: String, password: String): Boolean {
         if (username.isBlank() || password.isBlank()) return false
         user = User("u1", username.trim(), phone = "+7 (900) 000-00-00")
-        if (balance == 0) balance = 500
+        if (balance == 0) balance = 500 // стартовый мок
         return true
     }
 
     fun register(phone: String, username: String, pass1: String, pass2: String, code: String): Boolean {
         if (phone.isBlank() || username.isBlank() || pass1.isBlank() || pass1 != pass2) return false
-        if (code.trim() != "1234") return false
+        if (code.trim() != "1234") return false // мок-код
         user = User("u1", username.trim(), phone.trim())
         if (balance == 0) balance = 500
         return true
@@ -68,6 +66,8 @@ class AppViewModel : ViewModel() {
 
     fun logout() {
         user = null
+        // можно оставить баланс как “кошелёк устройства”, но чаще обнуляют:
+        // balance = 0
     }
 
     fun topUp(amount: Int): Boolean {
@@ -102,36 +102,23 @@ class AppViewModel : ViewModel() {
         bookingDraft = BookingDraft(clubId = selectedClubId)
     }
 
+    // --- Booking setup ---
     fun setBookingDate(date: LocalDate) {
-        val d = bookingDraft
-        val oldStart = startDateTime(d)
-        val oldEnd = endDateTime(d)
-
-        val newStart = LocalDateTime.of(date, LocalTime.of(oldStart.hour, oldStart.minute))
-        val delta = Duration.between(oldStart, newStart)
-        val newEnd = oldEnd.plus(delta)
-
-        bookingDraft = packDraft(d.copy(date = date), newStart, newEnd)
+        bookingDraft = bookingDraft.copy(date = date)
     }
 
-    fun setStartSelection(date: LocalDate, startMin: Int) {
-        val d = bookingDraft
-        val oldStart = startDateTime(d)
-        val oldEnd = endDateTime(d)
-        val newStart = date.atStartOfDay().plusMinutes(startMin.toLong())
-        val delta = Duration.between(oldStart, newStart)
-        val newEnd = oldEnd.plus(delta)
-
-        bookingDraft = packDraft(d.copy(date = date, startMin = startMin), newStart, newEnd)
+    fun setStartMin(startMin: Int) {
+        val newDraft = bookingDraft.copy(startMin = startMin)
+        bookingDraft = ensureValidTimeRange(newDraft)
     }
 
-    fun setEndSelection(endDate: LocalDate, endMin: Int) {
-        val d = bookingDraft
-        val start = startDateTime(d)
-        val picked = endDate.atStartOfDay().plusMinutes(endMin.toLong())
-        val minEnd = start.plusMinutes(MIN_GAP_MIN)
-        val newEnd = if (picked.isBefore(minEnd)) minEnd else picked
-        bookingDraft = packDraft(d, start, newEnd)
+    fun setEndMin(endMin: Int) {
+        val newDraft = bookingDraft.copy(endMin = endMin)
+        bookingDraft = ensureValidTimeRange(newDraft)
+    }
+
+    fun setTimeRange(startMin: Int, endMin: Int) {
+        bookingDraft = ensureValidTimeRange(bookingDraft.copy(startMin = startMin, endMin = endMin))
     }
 
     fun toggleSeat(seatId: String) {
@@ -145,6 +132,7 @@ class AppViewModel : ViewModel() {
         val overlaps = seat.booked.any { it.overlaps(selected) }
         if (!overlaps) return SeatAvailability.FREE
 
+        // “частично” — если пересекается, но не полностью покрывает выбранный диапазон (упрощённо)
         val fullyCovered = seat.booked.any { it.startMin <= selected.startMin && selected.endMin <= it.endMin }
         return if (fullyCovered) SeatAvailability.BOOKED else SeatAvailability.PARTIAL
     }
@@ -159,6 +147,7 @@ class AppViewModel : ViewModel() {
     }
 
     fun checkoutByCard(total: Int): Boolean {
+        // мок-карта всегда “успешно”
         mockStartSession()
         clearCart()
         return true
@@ -181,51 +170,14 @@ class AppViewModel : ViewModel() {
         )
     }
 
-    fun setEndMin(endMin: Int) =
-        setEndSelection(bookingDraft.date.plusDays(bookingDraft.endDayOffset.toLong()), endMin)
-
-    fun startDateTime(d: BookingDraft): LocalDateTime =
-        d.date.plusDays(d.startDayOffset.toLong()).atStartOfDay().plusMinutes(d.startMin.toLong())
-
-    fun endDateTime(d: BookingDraft): LocalDateTime =
-        d.date.plusDays(d.endDayOffset.toLong()).atStartOfDay().plusMinutes(d.endMin.toLong())
-
-    fun selectedTimeRangeForSeats(d: BookingDraft): TimeRange? {
-        val start = startDateTime(d)
-        val end = endDateTime(d)
-        val minutes = Duration.between(start, end).toMinutes()
-        if (minutes <= 0) return null
-        return if (minutes >= DAY_MIN.toLong()) {
-            TimeRange(0, DAY_MIN)
-        } else {
-            TimeRange(d.startMin, d.endMin)
-        }
+    private fun ensureValidTimeRange(draft: BookingDraft): BookingDraft {
+        // Минимальная длительность — 30 минут
+        return if (draft.endMin <= draft.startMin) {
+            val max = 23 * 60 + 30
+            val fixedEnd = (draft.startMin + 30).coerceAtMost(max)
+            draft.copy(endMin = fixedEnd)
+        } else draft
     }
-
-    private fun packDraft(base: BookingDraft, start: LocalDateTime, endRaw: LocalDateTime): BookingDraft {
-        val minEnd = start.plusMinutes(MIN_GAP_MIN)
-        val end = if (endRaw.isBefore(minEnd)) minEnd else endRaw
-
-        val startDate = start.toLocalDate()
-        val endDate = end.toLocalDate()
-        val offsetDays =
-            Duration.between(startDate.atStartOfDay(), endDate.atStartOfDay())
-                .toDays()
-                .toInt()
-                .coerceAtLeast(0)
-
-        val startMin = start.toLocalTime().hour * 60 + start.toLocalTime().minute
-        val endMin = end.toLocalTime().hour * 60 + end.toLocalTime().minute
-
-        return base.copy(
-            date = startDate,
-            startDayOffset = 0,
-            startMin = startMin % DAY_MIN,
-            endDayOffset = offsetDays,
-            endMin = endMin % DAY_MIN
-        )
-    }
-
 
     fun minToLabel(m: Int): String {
         val hh = (m / 60).toString().padStart(2, '0')
@@ -247,34 +199,5 @@ class AppViewModel : ViewModel() {
     fun chooseClub(clubId: String) {
         setClub(clubId)
         confirmClub()
-    }
-
-    fun shiftStartBy(deltaMin: Int) {
-        val d = bookingDraft
-
-        val startAbs = d.startDayOffset * DAY_MIN + d.startMin
-        val endAbs = d.endDayOffset * DAY_MIN + d.endMin
-
-        val newStartAbs = startAbs + deltaMin
-        val newEndAbs = endAbs + deltaMin
-
-        bookingDraft = d.copy(
-            startDayOffset = newStartAbs.floorDiv(DAY_MIN),
-            startMin = ((newStartAbs % DAY_MIN) + DAY_MIN) % DAY_MIN,
-            endDayOffset = newEndAbs.floorDiv(DAY_MIN),
-            endMin = ((newEndAbs % DAY_MIN) + DAY_MIN) % DAY_MIN
-        )
-    }
-
-    fun setEndAbsolute(newAbs: Int) {
-        val d = bookingDraft
-        val startAbs = d.startDayOffset * DAY_MIN + d.startMin
-
-        if (newAbs < startAbs + 60) return
-
-        bookingDraft = d.copy(
-            endDayOffset = newAbs.floorDiv(DAY_MIN),
-            endMin = ((newAbs % DAY_MIN) + DAY_MIN) % DAY_MIN
-        )
     }
 }

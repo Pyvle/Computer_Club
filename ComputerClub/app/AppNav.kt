@@ -47,6 +47,7 @@ fun AppNav(appVm: AppViewModel) {
                     appVm = appVm,
                     onBack = { nav.popBackStack() },
                     onChosen = {
+                        // после выбора — логично отправить в бронирование
                         nav.navigate(Routes.Booking) {
                             launchSingleTop = true
                         }
@@ -82,10 +83,7 @@ fun AppNav(appVm: AppViewModel) {
                     appVm = appVm,
                     fromRoute = from,
                     onSuccess = {
-                        nav.navigate(from) {
-                            popUpTo(Routes.Login) { inclusive = true }
-                            launchSingleTop = true
-                        }
+                        nav.navigate(from) { popUpTo("login?from=$from") { inclusive = true } }
                     },
                     onGoRegister = { nav.navigate("register?from=$from") }
                 )
@@ -100,10 +98,7 @@ fun AppNav(appVm: AppViewModel) {
                     appVm = appVm,
                     fromRoute = from,
                     onSuccess = {
-                        nav.navigate(from) {
-                            popUpTo(Routes.Register) { inclusive = true }
-                            launchSingleTop = true
-                        }
+                        nav.navigate(from) { popUpTo("register?from=$from") { inclusive = true } }
                     },
                     onGoLogin = { nav.navigate("login?from=$from") }
                 )

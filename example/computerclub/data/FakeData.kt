@@ -27,16 +27,17 @@ object FakeData {
         )
     )
 
+    // seatMapByClub оставь как у тебя уже было (оно нужно)
     val seatMapByClub: Map<String, List<Seat>> = mapOf(
         "c1" to buildSeats("A"),
         "c2" to buildSeats("B"),
-        "c3" to buildSeats("C")
+        "c3" to buildSeats("C"),
     )
 
     val categories = listOf(
         ProductCategory("food", "Еда"),
         ProductCategory("drink", "Напитки"),
-        ProductCategory("service", "Услуги")
+        ProductCategory("service", "Услуги"),
     )
 
     val products = listOf(
@@ -45,7 +46,7 @@ object FakeData {
         Product("p3", "drink", "Кола", 150, "0.5L"),
         Product("p4", "drink", "Энергетик", 220, "0.5L"),
         Product("p5", "service", "VIP-наушники", 100, "Аренда на время сессии"),
-        Product("p6", "service", "Доп. время (30 мин)", 120, "Добавится к сессии")
+        Product("p6", "service", "Доп. время (30 мин)", 120, "Добавится к сессии"),
     )
 
     val notifications = listOf(

@@ -13,18 +13,8 @@ data class NewsItem(
 
 enum class SeatType { REGULAR, VIP }
 data class TimeRange(val startMin: Int, val endMin: Int) {
-    fun overlaps(other: TimeRange): Boolean {
-        fun segments(r: TimeRange): List<Pair<Int, Int>> {
-            // normal
-            if (r.endMin >= r.startMin) return listOf(r.startMin to r.endMin)
-            // wrap (e.g. 1410..60)
-            return listOf(r.startMin to 24 * 60, 0 to r.endMin)
-        }
-
-        val a = segments(this)
-        val b = segments(other)
-        return a.any { (as0, ae) -> b.any { (bs, be) -> as0 < be && bs < ae } }
-    }
+    fun overlaps(other: TimeRange): Boolean =
+        startMin < other.endMin && other.startMin < endMin
 }
 
 data class Seat(
@@ -33,7 +23,7 @@ data class Seat(
     val type: SeatType,
     val hasPc: Boolean,
     val equipment: String,
-    val booked: List<TimeRange> = emptyList()
+    val booked: List<TimeRange> = emptyList(),
 )
 
 enum class SeatAvailability { FREE, BOOKED, PARTIAL }
@@ -59,13 +49,9 @@ data class CartProductLine(
 data class BookingDraft(
     val clubId: String,
     val date: LocalDate = LocalDate.now(),
-
-    val startDayOffset: Int = 0,
+    // минуты от 00:00
     val startMin: Int = 18 * 60,
-
-    val endDayOffset: Int = 0,
     val endMin: Int = 19 * 60,
-
     val selectedSeatIds: Set<String> = emptySet()
 )
 

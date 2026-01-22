@@ -1,0 +1,490 @@
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class
+)
+
+package com.example.computerclub.ui.screens
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import com.example.computerclub.data.FakeData
+import com.example.computerclub.vm.AppViewModel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
+import java.util.Locale
+import kotlin.math.abs
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.outlined.BookmarkBorder
+
+private const val DAY_MIN = 24 * 60
+private const val STEP = 30
+private const val MIN_END_GAP = 60
+
+private val TIME_ITEM_WIDTH = 96.dp
+private val TIME_ITEM_HEIGHT = 52.dp
+private val TIME_ITEM_SPACING = 14.dp
+
+private val DATE_TILE_SIZE = 48.dp
+
+private val RU = Locale("ru")
+private val DATE_TOP_FMT = DateTimeFormatter.ofPattern("d MMMM", RU)
+private val DATE_TILE_DOW_FMT = DateTimeFormatter.ofPattern("EEE", RU)
+private val DATE_RIGHT_FMT = DateTimeFormatter.ofPattern("d MMM", RU)
+
+private const val WHEEL_COUNT = 501
+private const val WHEEL_MID = WHEEL_COUNT / 2
+
+@Composable
+fun BookingSetupScreen(
+    appVm: AppViewModel,
+    onNext: () -> Unit
+) {
+    val draft = appVm.bookingDraft
+
+    val club = remember(draft.clubId) {
+        FakeData.clubs.first { it.id == draft.clubId }
+    }
+
+    val startAbsMin = draft.startDayOffset * DAY_MIN + draft.startMin
+    val endAbsMin = draft.endDayOffset * DAY_MIN + draft.endMin
+
+    val durationAbs = (endAbsMin - startAbsMin).coerceAtLeast(MIN_END_GAP)
+
+    val startAbsNow by rememberUpdatedState(startAbsMin)
+    val endAbsNow by rememberUpdatedState(endAbsMin)
+    val durationNow by rememberUpdatedState(durationAbs)
+
+    fun minEndForStart(startAbs: Int) = startAbs + MIN_END_GAP
+
+    fun setStartKeepingDuration(newStartAbsAligned: Int) {
+        val newStartAbs = roundToStep(newStartAbsAligned)
+        val delta = newStartAbs - startAbsNow
+        if (delta == 0) return
+
+        val newEndAbs = newStartAbs + durationNow
+        val minEnd = minEndForStart(newStartAbs)
+        val finalEnd = if (newEndAbs < minEnd) minEnd else newEndAbs
+
+        appVm.shiftStartBy(delta)
+        appVm.setEndAbsolute(finalEnd)
+    }
+
+    fun setEndWithMin(newEndAbsAligned: Int) {
+        val newEndAbs = roundToStep(newEndAbsAligned)
+        val minEnd = minEndForStart(startAbsNow)
+        appVm.setEndAbsolute(if (newEndAbs < minEnd) minEnd else newEndAbs)
+    }
+
+    val startDateSelected = remember(draft.date, draft.startDayOffset) {
+        draft.date.plusDays(draft.startDayOffset.toLong())
+    }
+
+    var showCalendar by remember { mutableStateOf(false) }
+    val zone = remember { ZoneId.systemDefault() }
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = remember(startDateSelected) {
+            startDateSelected.atStartOfDay(zone).toInstant().toEpochMilli()
+        }
+    )
+
+    if (showCalendar) {
+        DatePickerDialog(
+            onDismissRequest = { showCalendar = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    val millis = datePickerState.selectedDateMillis
+                    if (millis != null) {
+                        val picked = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
+                        val deltaDays = ChronoUnit.DAYS.between(startDateSelected, picked).toInt()
+                        if (deltaDays != 0) setStartKeepingDuration(startAbsNow + deltaDays * DAY_MIN)
+                    }
+                    showCalendar = false
+                }) { Text("ОК") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCalendar = false }) { Text("Отмена") }
+            }
+        ) { DatePicker(state = datePickerState) }
+    }
+
+    LaunchedEffect(startAbsMin, endAbsMin) {
+        val minEnd = minEndForStart(startAbsMin)
+        if (endAbsMin < minEnd) appVm.setEndAbsolute(minEnd)
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Card {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(club.name, style = MaterialTheme.typography.titleMedium)
+                    Text(club.address, style = MaterialTheme.typography.bodyMedium)
+                }
+                IconButton(onClick = { appVm.toggleFavoriteClub(club.id) }) {
+                    Icon(
+                        imageVector = if (appVm.isFavoriteClub(club.id))
+                            Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                        contentDescription = "Избранное"
+                    )
+                }
+            }
+        }
+
+        DateStrip(
+            selectedDate = startDateSelected,
+            onPick = { picked ->
+                val deltaDays = ChronoUnit.DAYS.between(startDateSelected, picked).toInt()
+                if (deltaDays != 0) setStartKeepingDuration(startAbsNow + deltaDays * DAY_MIN)
+            },
+            onOpenCalendar = { showCalendar = true }
+        )
+
+        InfiniteWindowTimeWheel(
+            title = "Начало",
+            baseDate = draft.date,
+            currentAbsMin = startAbsMin,
+            minLimitAbsMin = null,
+            onCommitAbsMin = { pickedAbs -> setStartKeepingDuration(pickedAbs) }
+        )
+
+        Text(
+            text = "Длительность: ${formatDuration(durationAbs)}",
+            style = MaterialTheme.typography.titleLarge
+        )
+
+        InfiniteWindowTimeWheel(
+            title = "Конец",
+            baseDate = draft.date,
+            currentAbsMin = endAbsMin,
+            minLimitAbsMin = startAbsMin + MIN_END_GAP,
+            onCommitAbsMin = { pickedAbs -> setEndWithMin(pickedAbs) }
+        )
+
+        Spacer(Modifier.weight(1f))
+
+        Button(
+            onClick = onNext,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Далее") }
+    }
+}
+
+@Composable
+private fun InfiniteWindowTimeWheel(
+    title: String,
+    baseDate: LocalDate,
+    currentAbsMin: Int,
+    minLimitAbsMin: Int?,
+    onCommitAbsMin: (Int) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = WHEEL_MID)
+    val flingBehavior = rememberSnapFlingBehavior(listState, SnapPosition.Center)
+
+    var programmatic by remember { mutableStateOf(false) }
+
+    var baseAbs by remember { mutableStateOf(roundToStep(currentAbsMin)) }
+
+    val minAligned = remember(minLimitAbsMin) { minLimitAbsMin?.let { ceilToStep(it) } }
+
+    LaunchedEffect(currentAbsMin, minAligned) {
+        if (!listState.isScrollInProgress && !programmatic) {
+            val desired = roundToStep(currentAbsMin)
+            baseAbs = if (minAligned != null && desired < minAligned) minAligned else desired
+            programmatic = true
+            listState.scrollToItem(WHEEL_MID, 0)
+            programmatic = false
+        }
+    }
+
+    fun absForIndex(index: Int): Int = baseAbs + (index - WHEEL_MID) * STEP
+
+    fun nearestIndexToCenter(): Int? {
+        val layout = listState.layoutInfo
+        val visible = layout.visibleItemsInfo
+        if (visible.isEmpty()) return null
+
+        val viewportCenter = (layout.viewportStartOffset + layout.viewportEndOffset) / 2
+        return visible.minByOrNull { info ->
+            val itemCenter = info.offset + info.size / 2
+            abs(itemCenter - viewportCenter)
+        }?.index
+    }
+
+    fun clampMin(x: Int): Int {
+        val m = minAligned ?: return x
+        return if (x < m) m else x
+    }
+
+    suspend fun snapCommitAndRecenter() {
+        val idx0 = nearestIndexToCenter() ?: return
+
+        val raw = absForIndex(idx0)
+        val picked = clampMin(roundToStep(raw))
+
+        val steps = Math.floorDiv(picked - baseAbs, STEP)
+        val targetIdx = (WHEEL_MID + steps).coerceIn(0, WHEEL_COUNT - 1)
+
+        programmatic = true
+        listState.animateScrollToItem(targetIdx, 0)
+        programmatic = false
+
+        onCommitAbsMin(picked)
+
+        baseAbs = picked
+        programmatic = true
+        listState.scrollToItem(WHEEL_MID, 0)
+        programmatic = false
+    }
+
+    val headerDate = remember(baseDate, currentAbsMin) {
+        val dayOffset = Math.floorDiv(currentAbsMin, DAY_MIN)
+        baseDate.plusDays(dayOffset.toLong()).format(DATE_TOP_FMT)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(title, style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.weight(1f))
+            Text(headerDate, style = MaterialTheme.typography.labelLarge)
+        }
+
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val sidePadding = (maxWidth - TIME_ITEM_WIDTH) / 2
+
+            Box(Modifier.fillMaxWidth()) {
+                LazyRow(
+                    state = listState,
+                    flingBehavior = flingBehavior,
+                    contentPadding = PaddingValues(horizontal = sidePadding),
+                    horizontalArrangement = Arrangement.spacedBy(TIME_ITEM_SPACING)
+                ) {
+                    items(WHEEL_COUNT) { i ->
+                        val absMin = absForIndex(i)
+                        val enabled = minAligned == null || absMin >= minAligned
+
+                        Box(Modifier.width(TIME_ITEM_WIDTH)) {
+                            AssistChip(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(TIME_ITEM_HEIGHT),
+                                enabled = enabled,
+                                border = null,
+                                onClick = {
+                                    if (!enabled) return@AssistChip
+                                    scope.launch {
+                                        if (programmatic) return@launch
+                                        programmatic = true
+                                        listState.animateScrollToItem(i, 0)
+                                        programmatic = false
+
+                                        val picked = clampMin(roundToStep(absMin))
+                                        onCommitAbsMin(picked)
+
+                                        baseAbs = picked
+                                        programmatic = true
+                                        listState.scrollToItem(WHEEL_MID, 0)
+                                        programmatic = false
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        text = formatTime(absMin),
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Box(
+                    Modifier
+                        .align(Alignment.Center)
+                        .width(TIME_ITEM_WIDTH)
+                        .height(TIME_ITEM_HEIGHT)
+                        .border(
+                            BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(listState, minAligned) {
+        snapshotFlow { listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { scrolling ->
+                if (!scrolling && !programmatic) {
+                    snapCommitAndRecenter()
+                }
+            }
+    }
+}
+
+@Composable
+private fun DateStrip(
+    selectedDate: LocalDate,
+    onPick: (LocalDate) -> Unit,
+    onOpenCalendar: () -> Unit
+) {
+    val today = remember { LocalDate.now() }
+    val tomorrow = remember(today) { today.plusDays(1) }
+
+    val start = remember(selectedDate, today) {
+        val sameMonth = selectedDate.year == today.year && selectedDate.month == today.month
+        if (sameMonth) today else selectedDate.withDayOfMonth(1)
+    }
+    val end = remember(selectedDate, today) {
+        val base = if (selectedDate.year == today.year && selectedDate.month == today.month) today else selectedDate
+        base.withDayOfMonth(base.lengthOfMonth())
+    }
+
+    val dates = remember(start, end) {
+        generateSequence(start) { d -> d.plusDays(1).takeIf { it <= end } }.toList()
+    }
+
+    val selectedIndex = remember(selectedDate, dates) {
+        dates.indexOfFirst { it == selectedDate }.coerceAtLeast(0)
+    }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
+
+    LaunchedEffect(selectedDate, dates) {
+        val idx = dates.indexOfFirst { it == selectedDate }
+        if (idx < 0) return@LaunchedEffect
+        val visible = listState.layoutInfo.visibleItemsInfo
+        if (visible.isEmpty()) return@LaunchedEffect
+        val first = visible.first().index
+        val last = visible.last().index
+        if (idx < first || idx > last) listState.animateScrollToItem(idx)
+    }
+
+    val rightLabel = remember(selectedDate, today, tomorrow) {
+        when (selectedDate) {
+            today -> "Сегодня"
+            tomorrow -> "Завтра"
+            else -> selectedDate.format(DATE_RIGHT_FMT)
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Дата", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.weight(1f))
+            Text(rightLabel, style = MaterialTheme.typography.titleMedium)
+            IconButton(onClick = onOpenCalendar, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.CalendarMonth, contentDescription = "Календарь")
+            }
+        }
+
+        LazyRow(
+            state = listState,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 2.dp)
+        ) {
+            itemsIndexed(dates) { _, d ->
+                val selected = d == selectedDate
+                val dow = remember(d) { d.format(DATE_TILE_DOW_FMT).lowercase(RU).replace(".", "") }
+                val day = d.dayOfMonth.toString()
+
+                Surface(
+                    onClick = { onPick(d) },
+                    shape = RoundedCornerShape(8.dp),
+                    tonalElevation = 1.dp,
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.size(DATE_TILE_SIZE)
+                ) {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(vertical = 5.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = dow,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = day,
+                            style = MaterialTheme.typography.titleSmall,
+                            textAlign = TextAlign.Center,
+                            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+private fun formatTime(absMin: Int): String {
+    val m = ((absMin % DAY_MIN) + DAY_MIN) % DAY_MIN
+    return "%02d:%02d".format(m / 60, m % 60)
+}
+
+private fun formatDuration(min: Int): String {
+    val d = Math.floorDiv(min, DAY_MIN)
+    val rem = min - d * DAY_MIN
+    val h = rem / 60
+    val m = rem % 60
+    return buildString {
+        if (d > 0) append("${d}д ")
+        if (h > 0) append("${h}ч ")
+        append("${m}м")
+    }
+}
+
+private fun roundToStep(x: Int): Int {
+    val half = STEP / 2
+    return if (x >= 0) ((x + half) / STEP) * STEP
+    else -(((-x + half) / STEP) * STEP)
+}
+
+private fun ceilToStep(x: Int): Int {
+    val r = x % STEP
+    if (r == 0) return x
+    return if (x > 0) x + (STEP - r) else x - r
+}

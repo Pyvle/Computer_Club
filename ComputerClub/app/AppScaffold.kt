@@ -4,12 +4,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import com.example.computerclub.ui.components.BalanceTopUpSheet
 import com.example.computerclub.ui.components.ClubBottomBar
 import com.example.computerclub.ui.components.ClubTopBar
 import com.example.computerclub.vm.AppViewModel
+import androidx.navigation.NavGraph.Companion.findStartDestination
 
 @Composable
 fun AppScaffold(
@@ -20,7 +20,6 @@ fun AppScaffold(
 ) {
     val showBottomBar = route.startsWith(Routes.Clubs) ||
             route.startsWith(Routes.Booking) ||
-            route.startsWith(Routes.BookingSeats) ||
             route.startsWith(Routes.Shop) ||
             route.startsWith(Routes.Cart) ||
             route.startsWith(Routes.History) ||
@@ -37,7 +36,6 @@ fun AppScaffold(
                     route.startsWith(Routes.Clubs) -> "Клубы"
                     route.startsWith("club_details") -> "Клуб"
                     route.startsWith(Routes.Booking) -> "Бронирование"
-                    route.startsWith(Routes.BookingSeats) -> "Бронирование"
                     route.startsWith(Routes.Shop) -> "Товары и услуги"
                     route.startsWith(Routes.Cart) -> "Корзина"
                     route.startsWith(Routes.History) -> "История"
@@ -45,44 +43,27 @@ fun AppScaffold(
                     else -> ""
                 }
 
+                val searchEnabled = !route.startsWith(Routes.Booking) && !route.startsWith(Routes.Cart) && !route.startsWith(Routes.History) && !route.startsWith(Routes.Profile)
+                // (можно включить поиск и там — но ты писал, что в бронировании его нет)
+
                 ClubTopBar(
                     title = title,
                     isLoggedIn = appVm.isLoggedIn(),
                     balance = appVm.balance,
                     onBalanceClick = { topUpOpen = true },
                     onLoginClick = {
+                        // логин “от текущего” (тут достаточно route без аргументов)
                         nav.navigate("login?from=${route.substringBefore("?")}")
                     },
-                    hideAuthAction = route.startsWith(Routes.Profile),
-                    showBack = route.startsWith(Routes.BookingSeats),
-                    onBack = { nav.popBackStack() }
+                    hideAuthAction = route.startsWith(Routes.Profile)
                 )
             }
         },
         bottomBar = {
             if (showBottomBar) {
-                val current = when {
-                    route.startsWith(Routes.BookingSeats) -> Routes.Booking
-                    else -> route.substringBefore("?")
-                }
-
                 ClubBottomBar(
-                    currentRoute = current,
+                    currentRoute = route.substringBefore("?"),
                     onNavigate = { dest ->
-                        if (dest == Routes.Clubs) {
-                            val popped = nav.popBackStack(Routes.Clubs, inclusive = false)
-                            if (!popped) {
-                                nav.navigate(Routes.Clubs) {
-                                    launchSingleTop = true
-                                    restoreState = true
-                                    popUpTo(nav.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                }
-                            }
-                            return@ClubBottomBar
-                        }
-
                         val clubsNodeId = nav.graph.findNode(Routes.Clubs)?.id
                         nav.navigate(dest) {
                             launchSingleTop = true
