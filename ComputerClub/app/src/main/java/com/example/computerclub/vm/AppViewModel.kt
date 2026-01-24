@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import com.example.computerclub.data.FakeData
 import com.example.computerclub.model.*
+import com.example.computerclub.app.Routes
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.Duration
@@ -20,24 +21,33 @@ private const val MIN_GAP_MIN = 60L
 
 class AppViewModel : ViewModel() {
 
+    // Auth / Profile
     var user: User? by mutableStateOf(null)
         private set
 
     var balance: Int by mutableStateOf(0)
         private set
 
+    // Shared club selection (Booking + Shop)
     var selectedClubId: String by mutableStateOf(FakeData.clubs.first().id)
         private set
 
     var clubConfirmed: Boolean by mutableStateOf(false)
         private set
 
+    // Booking draft (selection before going to cart)
     var bookingDraft: BookingDraft by mutableStateOf(BookingDraft(clubId = selectedClubId))
         private set
 
+    // Чтобы при переходах по нижней панели "Бронь" возвращалась туда, где пользователь был в последний раз.
+    var lastBookingRoute: String by mutableStateOf(Routes.Booking)
+        private set
+
+    // Cart products
     var cartLines: List<CartProductLine> by mutableStateOf(emptyList())
         private set
 
+    // Current session mock
     var currentSession: CurrentSessionSummary? by mutableStateOf(null)
         private set
 
@@ -54,13 +64,13 @@ class AppViewModel : ViewModel() {
     fun login(username: String, password: String): Boolean {
         if (username.isBlank() || password.isBlank()) return false
         user = User("u1", username.trim(), phone = "+7 (900) 000-00-00")
-        if (balance == 0) balance = 500
+        if (balance == 0) balance = 500 // стартовый мок
         return true
     }
 
     fun register(phone: String, username: String, pass1: String, pass2: String, code: String): Boolean {
         if (phone.isBlank() || username.isBlank() || pass1.isBlank() || pass1 != pass2) return false
-        if (code.trim() != "1234") return false
+        if (code.trim() != "1234") return false // мок-код
         user = User("u1", username.trim(), phone.trim())
         if (balance == 0) balance = 500
         return true
@@ -68,6 +78,8 @@ class AppViewModel : ViewModel() {
 
     fun logout() {
         user = null
+        // можно оставить баланс как “кошелёк устройства”, но чаще обнуляют:
+        // balance = 0
     }
 
     fun topUp(amount: Int): Boolean {
@@ -102,18 +114,24 @@ class AppViewModel : ViewModel() {
         bookingDraft = BookingDraft(clubId = selectedClubId)
     }
 
+    // --- Booking setup ---
     fun setBookingDate(date: LocalDate) {
         val d = bookingDraft
         val oldStart = startDateTime(d)
         val oldEnd = endDateTime(d)
 
         val newStart = LocalDateTime.of(date, LocalTime.of(oldStart.hour, oldStart.minute))
+        // сдвигаем конец на ту же дельту по времени, чтобы длительность сохранилась
         val delta = Duration.between(oldStart, newStart)
         val newEnd = oldEnd.plus(delta)
 
         bookingDraft = packDraft(d.copy(date = date), newStart, newEnd)
     }
 
+    /**
+     * Выбор начала как (дата, минуты).
+     * Конец двигается на ту же величину прокрутки, чтобы длительность сохранялась.
+     */
     fun setStartSelection(date: LocalDate, startMin: Int) {
         val d = bookingDraft
         val oldStart = startDateTime(d)
@@ -125,6 +143,10 @@ class AppViewModel : ViewModel() {
         bookingDraft = packDraft(d.copy(date = date, startMin = startMin), newStart, newEnd)
     }
 
+    /**
+     * Выбор конца как (дата, минуты) — никак не влияет на начало.
+     * Но не даём выбрать меньше (начало + 1 час).
+     */
     fun setEndSelection(endDate: LocalDate, endMin: Int) {
         val d = bookingDraft
         val start = startDateTime(d)
@@ -145,6 +167,7 @@ class AppViewModel : ViewModel() {
         val overlaps = seat.booked.any { it.overlaps(selected) }
         if (!overlaps) return SeatAvailability.FREE
 
+        // “частично” — если пересекается, но не полностью покрывает выбранный диапазон (упрощённо)
         val fullyCovered = seat.booked.any { it.startMin <= selected.startMin && selected.endMin <= it.endMin }
         return if (fullyCovered) SeatAvailability.BOOKED else SeatAvailability.PARTIAL
     }
@@ -159,6 +182,7 @@ class AppViewModel : ViewModel() {
     }
 
     fun checkoutByCard(total: Int): Boolean {
+        // мок-карта всегда “успешно”
         mockStartSession()
         clearCart()
         return true
@@ -181,6 +205,7 @@ class AppViewModel : ViewModel() {
         )
     }
 
+    // Публичные хелперы для экранов (BookingSetup/BookingSeats)
     fun setEndMin(endMin: Int) =
         setEndSelection(bookingDraft.date.plusDays(bookingDraft.endDayOffset.toLong()), endMin)
 
@@ -190,6 +215,12 @@ class AppViewModel : ViewModel() {
     fun endDateTime(d: BookingDraft): LocalDateTime =
         d.date.plusDays(d.endDayOffset.toLong()).atStartOfDay().plusMinutes(d.endMin.toLong())
 
+    /**
+     * Диапазон времени для подсветки занятости мест.
+     * FakeData хранит брони без привязки к дате, поэтому:
+     * - если длительность >= 24 часа, считаем что выбран "весь день"
+     * - иначе возвращаем TimeRange(startMin,endMin) (может быть "оборачивающим" через 00:00)
+     */
     fun selectedTimeRangeForSeats(d: BookingDraft): TimeRange? {
         val start = startDateTime(d)
         val end = endDateTime(d)
@@ -202,6 +233,11 @@ class AppViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Приводит (start,end) к BookingDraft:
+     * - end >= start + 1 час
+     * - вычисляет endOffsetDays/endMin
+     */
     private fun packDraft(base: BookingDraft, start: LocalDateTime, endRaw: LocalDateTime): BookingDraft {
         val minEnd = start.plusMinutes(MIN_GAP_MIN)
         val end = if (endRaw.isBefore(minEnd)) minEnd else endRaw
@@ -249,6 +285,15 @@ class AppViewModel : ViewModel() {
         confirmClub()
     }
 
+    fun onRouteChanged(route: String) {
+        // Нормализуем для стабильности (без аргументов)
+        val r = route.substringBefore("?")
+        when {
+            r.startsWith(Routes.BookingSeats) -> lastBookingRoute = Routes.BookingSeats
+            r.startsWith(Routes.Booking) -> lastBookingRoute = Routes.Booking
+        }
+    }
+
     fun shiftStartBy(deltaMin: Int) {
         val d = bookingDraft
 
@@ -259,9 +304,9 @@ class AppViewModel : ViewModel() {
         val newEndAbs = endAbs + deltaMin
 
         bookingDraft = d.copy(
-            startDayOffset = newStartAbs.floorDiv(DAY_MIN),
+            startDayOffset = Math.floorDiv(newStartAbs, DAY_MIN),
             startMin = ((newStartAbs % DAY_MIN) + DAY_MIN) % DAY_MIN,
-            endDayOffset = newEndAbs.floorDiv(DAY_MIN),
+            endDayOffset = Math.floorDiv(newEndAbs, DAY_MIN),
             endMin = ((newEndAbs % DAY_MIN) + DAY_MIN) % DAY_MIN
         )
     }
@@ -273,7 +318,7 @@ class AppViewModel : ViewModel() {
         if (newAbs < startAbs + 60) return
 
         bookingDraft = d.copy(
-            endDayOffset = newAbs.floorDiv(DAY_MIN),
+            endDayOffset = Math.floorDiv(newAbs, DAY_MIN),
             endMin = ((newAbs % DAY_MIN) + DAY_MIN) % DAY_MIN
         )
     }

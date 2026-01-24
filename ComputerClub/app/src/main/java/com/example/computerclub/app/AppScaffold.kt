@@ -18,6 +18,7 @@ fun AppScaffold(
     appVm: AppViewModel,
     content: @Composable () -> Unit
 ) {
+    // Нижняя панель видна и на booking_seats тоже
     val showBottomBar = route.startsWith(Routes.Clubs) ||
             route.startsWith(Routes.Booking) ||
             route.startsWith(Routes.BookingSeats) ||
@@ -54,13 +55,26 @@ fun AppScaffold(
                         nav.navigate("login?from=${route.substringBefore("?")}")
                     },
                     hideAuthAction = route.startsWith(Routes.Profile),
+                    // стрелка назад только на экране выбора мест
                     showBack = route.startsWith(Routes.BookingSeats),
-                    onBack = { nav.popBackStack() }
+                    onBack = {
+                        val popped = nav.popBackStack(Routes.Booking, inclusive = false)
+                        if (!popped) {
+                            nav.navigate(Routes.Booking) {
+                                launchSingleTop = true
+                                restoreState = true
+                                popUpTo(nav.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                            }
+                        }
+                    }
                 )
             }
         },
         bottomBar = {
             if (showBottomBar) {
+                // Подсветка вкладки "Бронь" и на booking_seats тоже
                 val current = when {
                     route.startsWith(Routes.BookingSeats) -> Routes.Booking
                     else -> route.substringBefore("?")
@@ -69,9 +83,26 @@ fun AppScaffold(
                 ClubBottomBar(
                     currentRoute = current,
                     onNavigate = { dest ->
+                        // Вкладка "Бронь" должна возвращать на последний экран брони (время/места),
+                        // чтобы экран выбора мест не "сбрасывался" при переходах по нижней панели.
+                        if (dest == Routes.Booking) {
+                            val target = appVm.lastBookingRoute
+                            nav.navigate(target) {
+                                launchSingleTop = true
+                                restoreState = true
+                                popUpTo(nav.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                            }
+                            return@ClubBottomBar
+                        }
+
+                        // ✅ ВАЖНО: "Клубы" должны работать из брони всегда.
                         if (dest == Routes.Clubs) {
+                            // 1) Если "clubs" есть в back stack — просто возвращаемся к нему.
                             val popped = nav.popBackStack(Routes.Clubs, inclusive = false)
                             if (!popped) {
+                                // 2) Иначе — обычная навигация.
                                 nav.navigate(Routes.Clubs) {
                                     launchSingleTop = true
                                     restoreState = true
@@ -83,6 +114,7 @@ fun AppScaffold(
                             return@ClubBottomBar
                         }
 
+                        // Для остальных вкладок — обычная схема (как у тебя было)
                         val clubsNodeId = nav.graph.findNode(Routes.Clubs)?.id
                         nav.navigate(dest) {
                             launchSingleTop = true

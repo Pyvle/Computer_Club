@@ -15,6 +15,11 @@ fun AppNav(appVm: AppViewModel) {
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: Routes.Splash
 
+    // Чтобы вкладка "Бронь" в нижней панели возвращала на последний экран брони (время/места)
+    LaunchedEffect(route) {
+        appVm.onRouteChanged(route)
+    }
+
     AppScaffold(
         route = route,
         nav = nav,
@@ -47,6 +52,7 @@ fun AppNav(appVm: AppViewModel) {
                     appVm = appVm,
                     onBack = { nav.popBackStack() },
                     onChosen = {
+                        // после выбора — логично отправить в бронирование
                         nav.navigate(Routes.Booking) {
                             launchSingleTop = true
                         }

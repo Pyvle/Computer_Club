@@ -15,7 +15,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshotFlow
@@ -29,29 +31,34 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 import kotlin.math.abs
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.outlined.BookmarkBorder
+import kotlin.math.ceil
+import androidx.compose.material3.SelectableDates
+
 
 private const val DAY_MIN = 24 * 60
 private const val STEP = 30
-private const val MIN_END_GAP = 60
+private const val MIN_END_GAP = 60 // минимум 1 час
 
+// стиль времени
 private val TIME_ITEM_WIDTH = 96.dp
 private val TIME_ITEM_HEIGHT = 52.dp
 private val TIME_ITEM_SPACING = 14.dp
 
+// даты (квадраты)
 private val DATE_TILE_SIZE = 48.dp
 
 private val RU = Locale("ru")
-private val DATE_TOP_FMT = DateTimeFormatter.ofPattern("d MMMM", RU)
-private val DATE_TILE_DOW_FMT = DateTimeFormatter.ofPattern("EEE", RU)
-private val DATE_RIGHT_FMT = DateTimeFormatter.ofPattern("d MMM", RU)
+private val DATE_TOP_FMT = DateTimeFormatter.ofPattern("d MMMM", RU) // 22 января
+private val DATE_TILE_DOW_FMT = DateTimeFormatter.ofPattern("EEE", RU) // пн
+private val DATE_RIGHT_FMT = DateTimeFormatter.ofPattern("d MMM", RU) // 22 янв
 
+// “псевдо-бесконечность” через локальное окно
 private const val WHEEL_COUNT = 501
 private const val WHEEL_MID = WHEEL_COUNT / 2
 
@@ -66,13 +73,15 @@ fun BookingSetupScreen(
         FakeData.clubs.first { it.id == draft.clubId }
     }
 
+    // абсолютные минуты относительно draft.date
     val startAbsMin = draft.startDayOffset * DAY_MIN + draft.startMin
     val endAbsMin = draft.endDayOffset * DAY_MIN + draft.endMin
 
+    // всегда считаем актуальную длительность (>= 60)
     val durationAbs = (endAbsMin - startAbsMin).coerceAtLeast(MIN_END_GAP)
 
+    // чтобы коллбеки не работали со “старыми” значениями
     val startAbsNow by rememberUpdatedState(startAbsMin)
-    val endAbsNow by rememberUpdatedState(endAbsMin)
     val durationNow by rememberUpdatedState(durationAbs)
 
     fun minEndForStart(startAbs: Int) = startAbs + MIN_END_GAP
@@ -96,15 +105,53 @@ fun BookingSetupScreen(
         appVm.setEndAbsolute(if (newEndAbs < minEnd) minEnd else newEndAbs)
     }
 
+    // --- Ограничения по реальному времени телефона ---
+    val now = remember { mutableStateOf(LocalDateTime.now()) }
+    LaunchedEffect(Unit) { now.value = LocalDateTime.now() }
+
+    val minStartAbsLimit = remember(draft.date, now.value) {
+        val n = now.value
+        val today = n.toLocalDate()
+        val curMin = n.hour * 60 + n.minute
+        val rounded = ceilToStep(curMin)
+
+        val minDate = if (rounded >= DAY_MIN) today.plusDays(1) else today
+        val minMin = if (rounded >= DAY_MIN) 0 else rounded
+
+        val daysBetween = ChronoUnit.DAYS.between(draft.date, minDate).toInt()
+        daysBetween * DAY_MIN + minMin
+    }
+
+    // Если текущий старт оказался в прошлом — подтянем старт (и вместе с ним конец)
+    LaunchedEffect(minStartAbsLimit) {
+        if (startAbsMin < minStartAbsLimit) {
+            setStartKeepingDuration(minStartAbsLimit)
+        }
+    }
+
+    // выбранная дата сверху = день НАЧАЛА
     val startDateSelected = remember(draft.date, draft.startDayOffset) {
         draft.date.plusDays(draft.startDayOffset.toLong())
     }
 
+    // календарь
     var showCalendar by remember { mutableStateOf(false) }
     val zone = remember { ZoneId.systemDefault() }
+    val today = remember { LocalDate.now() }
+
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = remember(startDateSelected) {
             startDateSelected.atStartOfDay(zone).toInstant().toEpochMilli()
+        },
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                val d = Instant.ofEpochMilli(utcTimeMillis).atZone(zone).toLocalDate()
+                return !d.isBefore(today) // ✅ нельзя прошлые
+            }
+
+            override fun isSelectableYear(year: Int): Boolean {
+                return year >= today.year
+            }
         }
     )
 
@@ -128,9 +175,17 @@ fun BookingSetupScreen(
         ) { DatePicker(state = datePickerState) }
     }
 
+    // если из-за внешних апдейтов конец оказался раньше минимума — подтянем
     LaunchedEffect(startAbsMin, endAbsMin) {
         val minEnd = minEndForStart(startAbsMin)
         if (endAbsMin < minEnd) appVm.setEndAbsolute(minEnd)
+    }
+
+    // если старт в прошлом — подтягиваем к "сейчас"
+    LaunchedEffect(minStartAbsLimit, startAbsMin) {
+        if (startAbsMin < minStartAbsLimit) {
+            setStartKeepingDuration(minStartAbsLimit)
+        }
     }
 
     Column(
@@ -139,6 +194,7 @@ fun BookingSetupScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // --- КЛУБ ---
         Card {
             Row(
                 Modifier
@@ -160,6 +216,7 @@ fun BookingSetupScreen(
             }
         }
 
+        // --- ДАТА (день начала) ---
         DateStrip(
             selectedDate = startDateSelected,
             onPick = { picked ->
@@ -169,11 +226,12 @@ fun BookingSetupScreen(
             onOpenCalendar = { showCalendar = true }
         )
 
+        // --- НАЧАЛО ---
         InfiniteWindowTimeWheel(
             title = "Начало",
             baseDate = draft.date,
             currentAbsMin = startAbsMin,
-            minLimitAbsMin = null,
+            minLimitAbsMin = minStartAbsLimit,
             onCommitAbsMin = { pickedAbs -> setStartKeepingDuration(pickedAbs) }
         )
 
@@ -182,6 +240,7 @@ fun BookingSetupScreen(
             style = MaterialTheme.typography.titleLarge
         )
 
+        // --- КОНЕЦ ---
         InfiniteWindowTimeWheel(
             title = "Конец",
             baseDate = draft.date,
@@ -199,6 +258,13 @@ fun BookingSetupScreen(
     }
 }
 
+/**
+ * Псевдо-бесконечное колесо:
+ * - показываем окно элементов вокруг baseAbs
+ * - коммитим только после фиксации (магнит)
+ * - любое значение валидируется по minLimit
+ * - если пользователь перехватил анимацию — магнит откладываем и применяем после
+ */
 @Composable
 private fun InfiniteWindowTimeWheel(
     title: String,
@@ -212,22 +278,42 @@ private fun InfiniteWindowTimeWheel(
     val flingBehavior = rememberSnapFlingBehavior(listState, SnapPosition.Center)
 
     var programmatic by remember { mutableStateOf(false) }
+    var pendingSnap by remember { mutableStateOf(false) } // ✅ ключевой фикс
+    var snapping by remember { mutableStateOf(false) }    // защита от двойных вызовов
 
-    var baseAbs by remember { mutableStateOf(roundToStep(currentAbsMin)) }
+    val minLimitNow by rememberUpdatedState(minLimitAbsMin)
+    fun minAlignedNow(): Int? = minLimitNow?.let { ceilToStep(it) }
 
-    val minAligned = remember(minLimitAbsMin) { minLimitAbsMin?.let { ceilToStep(it) } }
+    fun clampMin(x: Int): Int {
+        val m = minAlignedNow() ?: return x
+        return if (x < m) m else x
+    }
 
-    LaunchedEffect(currentAbsMin, minAligned) {
-        if (!listState.isScrollInProgress && !programmatic) {
-            val desired = roundToStep(currentAbsMin)
-            baseAbs = if (minAligned != null && desired < minAligned) minAligned else desired
-            programmatic = true
-            listState.scrollToItem(WHEEL_MID, 0)
+    var baseAbs by remember { mutableStateOf(0) }
+    fun absForIndex(index: Int): Int = baseAbs + (index - WHEEL_MID) * STEP
+
+    suspend fun safeScrollTo(index: Int, animated: Boolean) {
+        programmatic = true
+        try {
+            if (animated) listState.animateScrollToItem(index, 0) else listState.scrollToItem(index, 0)
+        } finally {
             programmatic = false
         }
     }
 
-    fun absForIndex(index: Int): Int = baseAbs + (index - WHEEL_MID) * STEP
+    // стартовая синхронизация
+    LaunchedEffect(Unit, minLimitAbsMin, currentAbsMin) {
+        baseAbs = clampMin(roundToStep(currentAbsMin))
+        safeScrollTo(WHEEL_MID, animated = false)
+    }
+
+    // синхронизация с VM — только когда колесо свободно
+    LaunchedEffect(currentAbsMin, minLimitAbsMin) {
+        if (!listState.isScrollInProgress && !programmatic) {
+            baseAbs = clampMin(roundToStep(currentAbsMin))
+            safeScrollTo(WHEEL_MID, animated = false)
+        }
+    }
 
     fun nearestIndexToCenter(): Int? {
         val layout = listState.layoutInfo
@@ -241,34 +327,42 @@ private fun InfiniteWindowTimeWheel(
         }?.index
     }
 
-    fun clampMin(x: Int): Int {
-        val m = minAligned ?: return x
-        return if (x < m) m else x
+    fun clampIndexByMinLimit(rawIdx: Int): Int {
+        val m = minAlignedNow() ?: return rawIdx
+
+        val minSteps = ceil((m - baseAbs).toDouble() / STEP.toDouble()).toInt()
+        val minIdx = (WHEEL_MID + minSteps).coerceIn(0, WHEEL_COUNT - 1)
+        return if (rawIdx < minIdx) minIdx else rawIdx
     }
 
     suspend fun snapCommitAndRecenter() {
-        val idx0 = nearestIndexToCenter() ?: return
+        if (snapping) return
+        snapping = true
+        try {
+            val idx0raw = nearestIndexToCenter() ?: return
+            val idx0 = clampIndexByMinLimit(idx0raw)
 
-        val raw = absForIndex(idx0)
-        val picked = clampMin(roundToStep(raw))
+            val raw = absForIndex(idx0)
+            val picked = clampMin(roundToStep(raw))
 
-        val steps = Math.floorDiv(picked - baseAbs, STEP)
-        val targetIdx = (WHEEL_MID + steps).coerceIn(0, WHEEL_COUNT - 1)
+            // докатываем выбранное в центр
+            val steps = Math.floorDiv(picked - baseAbs, STEP)
+            val targetIdx = (WHEEL_MID + steps).coerceIn(0, WHEEL_COUNT - 1)
 
-        programmatic = true
-        listState.animateScrollToItem(targetIdx, 0)
-        programmatic = false
+            // если пользователь оставил "недоступное" — мы всё равно докрутим к picked (уже clamp)
+            safeScrollTo(targetIdx, animated = true)
 
-        onCommitAbsMin(picked)
+            onCommitAbsMin(picked)
 
-        baseAbs = picked
-        programmatic = true
-        listState.scrollToItem(WHEEL_MID, 0)
-        programmatic = false
+            baseAbs = picked
+            safeScrollTo(WHEEL_MID, animated = false)
+        } finally {
+            snapping = false
+        }
     }
 
-    val headerDate = remember(baseDate, currentAbsMin) {
-        val dayOffset = Math.floorDiv(currentAbsMin, DAY_MIN)
+    val headerDate = remember(baseDate, baseAbs) {
+        val dayOffset = Math.floorDiv(baseAbs, DAY_MIN)
         baseDate.plusDays(dayOffset.toLong()).format(DATE_TOP_FMT)
     }
 
@@ -294,7 +388,8 @@ private fun InfiniteWindowTimeWheel(
                 ) {
                     items(WHEEL_COUNT) { i ->
                         val absMin = absForIndex(i)
-                        val enabled = minAligned == null || absMin >= minAligned
+                        val m = minAlignedNow()
+                        val enabled = m == null || absMin >= m
 
                         Box(Modifier.width(TIME_ITEM_WIDTH)) {
                             AssistChip(
@@ -304,20 +399,17 @@ private fun InfiniteWindowTimeWheel(
                                 enabled = enabled,
                                 border = null,
                                 onClick = {
-                                    if (!enabled) return@AssistChip
                                     scope.launch {
-                                        if (programmatic) return@launch
-                                        programmatic = true
-                                        listState.animateScrollToItem(i, 0)
-                                        programmatic = false
-
+                                        // по клику — всегда валидируем и докручиваем к допустимому
                                         val picked = clampMin(roundToStep(absMin))
+                                        val steps = Math.floorDiv(picked - baseAbs, STEP)
+                                        val targetIdx = (WHEEL_MID + steps).coerceIn(0, WHEEL_COUNT - 1)
+
+                                        safeScrollTo(targetIdx, animated = true)
                                         onCommitAbsMin(picked)
 
                                         baseAbs = picked
-                                        programmatic = true
-                                        listState.scrollToItem(WHEEL_MID, 0)
-                                        programmatic = false
+                                        safeScrollTo(WHEEL_MID, animated = false)
                                     }
                                 },
                                 label = {
@@ -333,6 +425,7 @@ private fun InfiniteWindowTimeWheel(
                     }
                 }
 
+                // рамка выбора
                 Box(
                     Modifier
                         .align(Alignment.Center)
@@ -347,14 +440,27 @@ private fun InfiniteWindowTimeWheel(
         }
     }
 
-    LaunchedEffect(listState, minAligned) {
+    // ✅ Главный фикс: если пользователь отпустил, но в этот момент шёл programmatic — откладываем snap.
+    LaunchedEffect(listState, minLimitAbsMin) {
         snapshotFlow { listState.isScrollInProgress }
             .distinctUntilChanged()
             .collect { scrolling ->
-                if (!scrolling && !programmatic) {
-                    snapCommitAndRecenter()
+                if (!scrolling) {
+                    if (programmatic) {
+                        pendingSnap = true
+                    } else {
+                        snapCommitAndRecenter()
+                    }
                 }
             }
+    }
+
+    // ✅ Когда programmatic закончился — если был отложенный snap, применяем
+    LaunchedEffect(programmatic) {
+        if (!programmatic && pendingSnap && !listState.isScrollInProgress) {
+            pendingSnap = false
+            snapCommitAndRecenter()
+        }
     }
 }
 
@@ -459,6 +565,7 @@ private fun DateStrip(
     }
 }
 
+// -------- helpers --------
 
 private fun formatTime(absMin: Int): String {
     val m = ((absMin % DAY_MIN) + DAY_MIN) % DAY_MIN
