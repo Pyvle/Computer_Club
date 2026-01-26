@@ -62,8 +62,12 @@ private const val WHEEL_MID = WHEEL_COUNT / 2
 @Composable
 fun BookingSetupScreen(
     appVm: AppViewModel,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    onQuickBookToCart: () -> Unit
 ) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scopeSnack = rememberCoroutineScope()
+
     val draft = appVm.bookingDraft
     val club = remember(draft.clubId) { FakeData.clubs.first { it.id == draft.clubId } }
 
@@ -172,74 +176,187 @@ fun BookingSetupScreen(
         ) { DatePicker(state = datePickerState) }
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // --- КЛУБ ---
-        Card {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(club.name, style = MaterialTheme.typography.titleMedium)
-                    Text(club.address, style = MaterialTheme.typography.bodyMedium)
-                }
-                IconButton(onClick = { appVm.toggleFavoriteClub(club.id) }) {
-                    Icon(
-                        imageVector = if (appVm.isFavoriteClub(club.id))
-                            Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                        contentDescription = "Избранное"
-                    )
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // --- КЛУБ ---
+            Card {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(club.name, style = MaterialTheme.typography.titleMedium)
+                        Text(club.address, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    IconButton(onClick = { appVm.toggleFavoriteClub(club.id) }) {
+                        Icon(
+                            imageVector = if (appVm.isFavoriteClub(club.id))
+                                Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                            contentDescription = "Избранное"
+                        )
+                    }
                 }
             }
+
+            // --- ДАТА (день начала) ---
+            DateStrip(
+                selectedDate = startDateSelected,
+                onPick = { picked ->
+                    // тут уже лента дат начинается от today, так что прошлое не попадёт
+                    val deltaDays = ChronoUnit.DAYS.between(startDateSelected, picked).toInt()
+                    if (deltaDays != 0) setStartKeepingDuration(startAbsNow + deltaDays * DAY_MIN)
+                },
+                onOpenCalendar = { showCalendar = true }
+            )
+
+            // --- НАЧАЛО ---
+            InfiniteWindowTimeWheel(
+                title = "Начало",
+                baseDate = draft.date,
+                currentAbsMin = startAbsMin,
+                minLimitAbsMin = minStartAbsLimit,
+                onCommitAbsMin = { pickedAbs -> setStartKeepingDuration(pickedAbs) }
+            )
+
+            Text(
+                text = "Длительность: ${formatDuration(durationAbs)}",
+                style = MaterialTheme.typography.titleLarge
+            )
+
+            // --- КОНЕЦ ---
+            InfiniteWindowTimeWheel(
+                title = "Конец",
+                baseDate = draft.date,
+                currentAbsMin = endAbsMin,
+                minLimitAbsMin = startAbsMin + MIN_END_GAP,
+                onCommitAbsMin = { pickedAbs -> setEndWithMin(pickedAbs) }
+            )
+
+            // --- ПАКЕТЫ ВРЕМЕНИ ---
+            TimePackagesRow(
+                selectedPackageHours = draft.packageHours,
+                onPickPackageHours = { hours ->
+                    // фиксируем длительность = пакет; конец подстраивается
+                    appVm.applyTimePackage(hours)
+                }
+            )
+
+            Spacer(Modifier.weight(1f))
+
+            OutlinedButton(
+                onClick = {
+                    val ok = appVm.quickBookOneSeat()
+                    if (ok) {
+                        // В корзину бронь попадает только после выбора места (быстрая бронь делает выбор автоматически)
+                        val res = appVm.commitCurrentBookingToCart()
+                        if (res.ok) {
+                            onQuickBookToCart()
+                        } else {
+                            scopeSnack.launch {
+                                snackbarHostState.showSnackbar(res.message ?: "Не удалось добавить в корзину")
+                            }
+                        }
+                    } else {
+                        scopeSnack.launch {
+                            snackbarHostState.showSnackbar("Нет доступных компьютеров на выбранное время")
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Быстрая бронь") }
+
+            Button(
+                onClick = onNext,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Далее") }
         }
 
-        // --- ДАТА (день начала) ---
-        DateStrip(
-            selectedDate = startDateSelected,
-            onPick = { picked ->
-                // тут уже лента дат начинается от today, так что прошлое не попадёт
-                val deltaDays = ChronoUnit.DAYS.between(startDateSelected, picked).toInt()
-                if (deltaDays != 0) setStartKeepingDuration(startAbsNow + deltaDays * DAY_MIN)
-            },
-            onOpenCalendar = { showCalendar = true }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 88.dp)
         )
+    }
+}
 
-        // --- НАЧАЛО ---
-        InfiniteWindowTimeWheel(
-            title = "Начало",
-            baseDate = draft.date,
-            currentAbsMin = startAbsMin,
-            minLimitAbsMin = minStartAbsLimit,
-            onCommitAbsMin = { pickedAbs -> setStartKeepingDuration(pickedAbs) }
-        )
+@Composable
+private fun TimePackagesRow(
+    selectedPackageHours: Int?,
+    onPickPackageHours: (Int) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Пакеты времени", style = MaterialTheme.typography.titleSmall)
 
-        Text(
-            text = "Длительность: ${formatDuration(durationAbs)}",
-            style = MaterialTheme.typography.titleLarge
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            TimePackageCard(
+                modifier = Modifier.weight(1f),
+                title = "3 часа",
+                pricePerHour = "90 ₽/ч",
+                selected = selectedPackageHours == 3,
+                onClick = { onPickPackageHours(3) }
+            )
+            TimePackageCard(
+                modifier = Modifier.weight(1f),
+                title = "5 часов",
+                pricePerHour = "80 ₽/ч",
+                selected = selectedPackageHours == 5,
+                onClick = { onPickPackageHours(5) }
+            )
+        }
+    }
+}
 
-        // --- КОНЕЦ ---
-        InfiniteWindowTimeWheel(
-            title = "Конец",
-            baseDate = draft.date,
-            currentAbsMin = endAbsMin,
-            minLimitAbsMin = startAbsMin + MIN_END_GAP,
-            onCommitAbsMin = { pickedAbs -> setEndWithMin(pickedAbs) }
-        )
-
-        Spacer(Modifier.weight(1f))
-
-        Button(
-            onClick = onNext,
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Далее") }
+@Composable
+private fun TimePackageCard(
+    modifier: Modifier,
+    title: String,
+    pricePerHour: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    OutlinedCard(
+        modifier = modifier.height(52.dp),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+        ),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+        ),
+        onClick = onClick
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 6.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                pricePerHour,
+                style = MaterialTheme.typography.labelMedium,
+                textAlign = TextAlign.Center,
+                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

@@ -12,7 +12,12 @@ data class NewsItem(
 )
 
 enum class SeatType { REGULAR, VIP }
+
 data class TimeRange(val startMin: Int, val endMin: Int) {
+    /**
+     * Overlap for ranges inside a day.
+     * Supports "wrap" ranges (e.g. 23:30–01:00) by splitting into two segments.
+     */
     fun overlaps(other: TimeRange): Boolean {
         fun segments(r: TimeRange): List<Pair<Int, Int>> {
             // normal
@@ -33,12 +38,13 @@ data class Seat(
     val type: SeatType,
     val hasPc: Boolean,
     val equipment: String,
-    val booked: List<TimeRange> = emptyList()
+    val booked: List<TimeRange> = emptyList(),
 )
 
 enum class SeatAvailability { FREE, BOOKED, PARTIAL }
 
 data class ProductCategory(val id: String, val title: String)
+
 data class Product(
     val id: String,
     val categoryId: String,
@@ -56,15 +62,40 @@ data class CartProductLine(
     val qty: Int
 )
 
+/**
+ * Строка брони в корзине.
+ * Это «снимок» выбранного времени/пакета/мест на момент добавления.
+ * Пользователь может добавить несколько броней в корзину с разными тарифами.
+ */
+data class CartBookingLine(
+    val id: String,
+    val clubId: String,
+    val date: LocalDate,
+    val startDayOffset: Int,
+    val startMin: Int,
+    val endDayOffset: Int,
+    val endMin: Int,
+    val packageHours: Int?,
+    val seatIds: List<String>
+)
+
 data class BookingDraft(
     val clubId: String,
-    val date: LocalDate = LocalDate.now(),
+    // Временная фиксация "текущей" даты для удобного тестирования (не читаем дату телефона).
+    // Когда будешь готов привязать к реальному времени — верни LocalDate.now().
+    val date: LocalDate = LocalDate.of(2026, 1, 25),
 
     val startDayOffset: Int = 0,
     val startMin: Int = 18 * 60,
 
     val endDayOffset: Int = 0,
     val endMin: Int = 19 * 60,
+
+    /**
+     * Выбранный пакет времени (в часах). null = обычная бронь.
+     * Пока используем для расчёта тарифа в корзине.
+     */
+    val packageHours: Int? = null,
 
     val selectedSeatIds: Set<String> = emptySet()
 )

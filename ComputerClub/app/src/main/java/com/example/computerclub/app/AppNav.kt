@@ -63,19 +63,34 @@ fun AppNav(appVm: AppViewModel) {
             composable(Routes.Booking) {
                 BookingSetupScreen(
                     appVm = appVm,
-                    onNext = { nav.navigate(Routes.BookingSeats) }
+                    onNext = { nav.navigate(Routes.BookingSeats) },
+                    onQuickBookToCart = { nav.navigate(Routes.Cart) }
                 )
             }
 
             composable(Routes.BookingSeats) {
                 BookingSeatsScreen(
                     appVm = appVm,
-                    onGoToCart = { nav.navigate(Routes.Cart) }
+                    onGoToCart = {
+                        nav.navigate(Routes.Cart)
+                    }
                 )
             }
 
             composable(Routes.Shop) { ShopScreen(appVm = appVm) }
-            composable(Routes.Cart) { CartScreen(appVm = appVm) }
+            composable(Routes.Cart) {
+                CartScreen(
+                    appVm = appVm,
+                    onEditBooking = { lineId ->
+                        if (appVm.beginEditBooking(lineId)) {
+                            nav.navigate(Routes.Booking) {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    }
+                )
+            }
             composable(Routes.History) { HistoryScreen(appVm = appVm) }
             composable(Routes.Profile) { ProfileScreen(appVm = appVm, nav = nav) }
 

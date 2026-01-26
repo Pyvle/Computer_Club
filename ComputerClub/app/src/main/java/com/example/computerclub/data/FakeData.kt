@@ -61,12 +61,16 @@ object FakeData {
     private fun buildSeats(prefix: String): List<Seat> {
         val booked1 = listOf(TimeRange(12 * 60, 14 * 60))
         val booked2 = listOf(TimeRange(18 * 60, 20 * 60))
+        // Бронь, которую можно "продлить" (мок-логика) — удобно тестировать блокировку +2 часа
+        val bookedExtendDemo = listOf(TimeRange(9 * 60, 10 * 60))
 
         val vipNumbers = setOf(5, 10, 15, 20)
 
         return (1..34).map { i ->
             val type = if (i in vipNumbers) SeatType.VIP else SeatType.REGULAR
             val booked = when {
+                // Демонстрация возможного продления +2 часа (например, старт 10:30/11:00 будет недоступен)
+                i % 8 == 0 -> bookedExtendDemo
                 i % 7 == 0 -> booked1
                 i % 9 == 0 -> booked2
                 i % 11 == 0 -> booked1 + booked2
