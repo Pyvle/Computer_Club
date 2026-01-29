@@ -77,7 +77,15 @@ fun AppNav(appVm: AppViewModel) {
                 )
             }
 
-            composable(Routes.Shop) { ShopScreen(appVm = appVm) }
+            composable(Routes.Shop) {
+                ShopScreen(
+                    appVm = appVm,
+                )
+            }
+
+            composable(Routes.ShopSearch) {
+                ShopSearchScreen(appVm = appVm)
+            }
             composable(Routes.Cart) {
                 CartScreen(
                     appVm = appVm,

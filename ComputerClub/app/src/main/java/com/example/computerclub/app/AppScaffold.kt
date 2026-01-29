@@ -39,6 +39,7 @@ fun AppScaffold(
                     route.startsWith("club_details") -> "Клуб"
                     route.startsWith(Routes.Booking) -> "Бронирование"
                     route.startsWith(Routes.BookingSeats) -> "Бронирование"
+                    route.startsWith(Routes.ShopSearch) -> "Поиск"
                     route.startsWith(Routes.Shop) -> "Товары и услуги"
                     route.startsWith(Routes.Cart) -> "Корзина"
                     route.startsWith(Routes.History) -> "История"
@@ -55,9 +56,14 @@ fun AppScaffold(
                         nav.navigate("login?from=${route.substringBefore("?")}")
                     },
                     hideAuthAction = route.startsWith(Routes.Profile),
-                    // стрелка назад только на экране выбора мест
-                    showBack = route.startsWith(Routes.BookingSeats),
+                    // стрелка назад на booking_seats и на экране поиска
+                    showBack = route.startsWith(Routes.BookingSeats) || route.startsWith(Routes.ShopSearch),
                     onBack = {
+                        if (route.startsWith(Routes.ShopSearch)) {
+                            nav.popBackStack()
+                            return@ClubTopBar
+                        }
+
                         val popped = nav.popBackStack(Routes.Booking, inclusive = false)
                         if (!popped) {
                             nav.navigate(Routes.Booking) {
@@ -77,6 +83,7 @@ fun AppScaffold(
                 // Подсветка вкладки "Бронь" и на booking_seats тоже
                 val current = when {
                     route.startsWith(Routes.BookingSeats) -> Routes.Booking
+                    route.startsWith(Routes.ShopSearch) -> Routes.Shop
                     else -> route.substringBefore("?")
                 }
 

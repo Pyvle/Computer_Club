@@ -9,6 +9,7 @@ object Routes {
     const val Booking = "booking"
     const val BookingSeats = "booking_seats"
     const val Shop = "shop"
+    const val ShopSearch = "shop_search"
     const val Cart = "cart"
     const val History = "history"
     const val Profile = "profile"
