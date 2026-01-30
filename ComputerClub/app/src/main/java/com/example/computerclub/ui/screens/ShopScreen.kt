@@ -1,7 +1,9 @@
 package com.example.computerclub.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -18,18 +20,23 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.example.computerclub.data.FakeData
 import com.example.computerclub.model.Product
 import com.example.computerclub.vm.AppViewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import androidx.compose.ui.draw.shadow
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ShopScreen(appVm: AppViewModel) {
     var query by remember { mutableStateOf("") }
@@ -45,10 +52,25 @@ fun ShopScreen(appVm: AppViewModel) {
         FakeData.clubs.first { it.id == appVm.selectedClubId }
     }
 
-    // Категории НЕ скрываем. Фильтруем только товары внутри категорий.
-    val sectionsAll = remember(query) {
+    // --- измеряем высоту липких чипов ---
+    var chipsHeightPx by remember { mutableStateOf(0) }
+
+    val density = LocalDensity.current
+    val gapPx = remember(density) { with(density) { 8.dp.toPx().roundToInt() } }
+    val fallbackChipsPx = remember(density) { with(density) { 56.dp.toPx().roundToInt() } }
+
+    fun chipsTotalPx(): Int = (if (chipsHeightPx > 0) chipsHeightPx else fallbackChipsPx) + gapPx
+    fun scrollOffsetForHeader(): Int = -chipsTotalPx()
+
+    // ✅ Меню зависит от выбранного клуба
+    val clubProducts = remember(appVm.selectedClubId) {
+        FakeData.productsForClub(appVm.selectedClubId)
+    }
+
+    // Категории не скрываем — фильтруем только товары выбранного клуба
+    val sectionsAll = remember(query, clubProducts) {
         FakeData.categories.map { cat ->
-            val list = FakeData.products
+            val list = clubProducts
                 .filter { it.categoryId == cat.id }
                 .filter {
                     query.isBlank() ||
@@ -59,11 +81,8 @@ fun ShopScreen(appVm: AppViewModel) {
         }
     }
 
-    // Хедеры сверху в LazyColumn: клуб, поиск, чипы — всегда 3
     val headerOffset = 3
 
-    // Индексы заголовков категорий для прыжка по чипу
-    // Даже если товаров 0 — оставляем минимум 1 item под заголовком, чтобы индексы не "ехали".
     val headerIndexByCatId = remember(sectionsAll) {
         val map = mutableMapOf<String, Int>()
         var idx = headerOffset
@@ -75,16 +94,45 @@ fun ShopScreen(appVm: AppViewModel) {
         map
     }
 
-    // Подсветка категории при скролле (по всем категориям)
-    LaunchedEffect(listState, headerIndexByCatId) {
+    var isAutoScrolling by remember { mutableStateOf(false) }
+
+    suspend fun animateToCategory(catId: String) {
+        val idx = headerIndexByCatId[catId] ?: return
+        isAutoScrolling = true
+        selectedCategoryId = catId
+
+        listState.animateScrollToItem(
+            index = idx,
+            scrollOffset = scrollOffsetForHeader()
+        )
+
+        val desiredY = chipsTotalPx()
+        repeat(2) {
+            val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == idx } ?: return@repeat
+            val delta = (info.offset - desiredY).toFloat()
+            if (abs(delta) <= 1f) return@repeat
+            listState.scrollBy(delta)
+        }
+
+        isAutoScrolling = false
+    }
+
+    LaunchedEffect(listState, headerIndexByCatId, chipsHeightPx) {
         val headers = FakeData.categories.mapNotNull { cat ->
             headerIndexByCatId[cat.id]?.let { cat.id to it }
         }.sortedBy { it.second }
 
-        snapshotFlow { listState.firstVisibleItemIndex }
+        snapshotFlow {
+            val anchorY = chipsTotalPx()
+            val visible = listState.layoutInfo.visibleItemsInfo
+                .filter { it.index >= headerOffset }
+
+            visible.minByOrNull { abs(it.offset - anchorY) }?.index ?: headerOffset
+        }
             .distinctUntilChanged()
-            .collect { firstIdx ->
-                val current = headers.lastOrNull { it.second <= firstIdx }?.first
+            .collect { anchorIndex ->
+                if (isAutoScrolling) return@collect
+                val current = headers.lastOrNull { it.second <= anchorIndex }?.first
                 if (current != null && current != selectedCategoryId) {
                     selectedCategoryId = current
                 }
@@ -99,7 +147,6 @@ fun ShopScreen(appVm: AppViewModel) {
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // --- Карточка клуба ---
             item(key = "club_card") {
                 Card(shape = RoundedCornerShape(14.dp)) {
                     Row(
@@ -123,7 +170,6 @@ fun ShopScreen(appVm: AppViewModel) {
                 }
             }
 
-            // --- Поиск ---
             item(key = "search") {
                 OutlinedTextField(
                     value = query,
@@ -134,24 +180,33 @@ fun ShopScreen(appVm: AppViewModel) {
                 )
             }
 
-            // --- Чипы категорий ---
-            item(key = "chips") {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(FakeData.categories, key = { it.id }) { cat ->
-                        FilterChip(
-                            selected = selectedCategoryId == cat.id,
-                            onClick = {
-                                selectedCategoryId = cat.id
-                                val idx = headerIndexByCatId[cat.id] ?: 0
-                                scope.launch { listState.animateScrollToItem(idx) }
-                            },
-                            label = { Text(cat.title) }
-                        )
+            stickyHeader(key = "chips") {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .zIndex(1f)
+                        .onSizeChanged { chipsHeightPx = it.height },
+                    color = MaterialTheme.colorScheme.background,
+                    tonalElevation = 2.dp
+                ) {
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(FakeData.categories, key = { it.id }) { cat ->
+                            FilterChip(
+                                selected = selectedCategoryId == cat.id,
+                                onClick = { scope.launch { animateToCategory(cat.id) } },
+                                label = { Text(cat.title) }
+                            )
+                        }
                     }
                 }
             }
 
-            // --- Контент по всем категориям ---
             sectionsAll.forEach { (cat, list) ->
                 item(key = "header_${cat.id}") {
                     Text(
@@ -223,7 +278,6 @@ fun ShopScreen(appVm: AppViewModel) {
                 }
             }
 
-            // чтобы последний ряд не прятался под кнопкой
             item(key = "bottom_spacer") { Spacer(Modifier.height(96.dp)) }
         }
 
@@ -239,14 +293,13 @@ fun ShopScreen(appVm: AppViewModel) {
                     .padding(16.dp)
             ) {
                 Button(
-                    onClick = { /* переход в корзину через нижнюю панель */ },
+                    onClick = { /* переход в корзину */ },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("В корзину") }
             }
         }
     }
 
-    // подтверждение клуба
     if (needConfirmClub) {
         AlertDialog(
             onDismissRequest = { needConfirmClub = false },
@@ -262,7 +315,6 @@ fun ShopScreen(appVm: AppViewModel) {
         )
     }
 
-    // BottomSheet с подробным описанием
     sheetProduct?.let { p ->
         val sheetState = rememberModalBottomSheetState()
 
@@ -353,7 +405,6 @@ private fun ProductTile(
         }
     }
 
-    // Светлая тема (похоже на скрин)
     val cardBg = Color(0xFFFFFFFF)
     val imageBg = Color(0xFFF4F4F4)
     val pillBg = Color(0xFFEFEFEF)
@@ -361,8 +412,7 @@ private fun ProductTile(
     val textSecondary = Color(0xFF7A7A7A)
 
     Card(
-        modifier = modifier
-            .shadow(6.dp, RoundedCornerShape(24.dp)), // мягкая тень
+        modifier = modifier.shadow(6.dp, RoundedCornerShape(24.dp)),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = cardBg)
     ) {
@@ -382,7 +432,6 @@ private fun ProductTile(
                     .background(imageBg),
                 contentAlignment = Alignment.Center
             ) {
-                // TODO: заменить на реальную картинку (Coil AsyncImage)
                 Text("Фото", style = MaterialTheme.typography.labelLarge, color = textSecondary)
             }
 
@@ -443,11 +492,7 @@ private fun ProductQtyBar(
                     .clickable { onAddFirst() },
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "+",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = textColor
-                )
+                Text("+", style = MaterialTheme.typography.headlineSmall, color = textColor)
             }
         } else {
             Row(
@@ -505,26 +550,11 @@ private fun QtyPill(
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             if (qty <= 0) {
-                Text(
-                    text = "+",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.clickable { onAddFirst() }
-                )
+                Text("+", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clickable { onAddFirst() })
             } else {
-                Text(
-                    text = "−",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.clickable { onMinus() }
-                )
-                Text(
-                    text = qty.toString(),
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                )
-                Text(
-                    text = "+",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.clickable { onPlus() }
-                )
+                Text("−", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clickable { onMinus() })
+                Text(qty.toString(), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                Text("+", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clickable { onPlus() })
             }
         }
     }

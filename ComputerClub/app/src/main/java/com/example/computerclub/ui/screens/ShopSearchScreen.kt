@@ -45,9 +45,9 @@ fun ShopSearchScreen(appVm: AppViewModel) {
         FakeData.clubs.first { it.id == appVm.selectedClubId }
     }
 
-    // Все товары как плоский список (варианты тоже отдельными позициями)
-    val allItems = remember {
-        FakeData.products.flatMap { it.toShopItems() }
+    // ✅ Все товары для выбранного клуба как плоский список (варианты тоже отдельными позициями)
+    val allItems = remember(appVm.selectedClubId) {
+        FakeData.productsForClub(appVm.selectedClubId).flatMap { it.toShopItems() }
     }
 
     val filtered = remember(normalizedQuery, allItems) {
@@ -56,7 +56,6 @@ fun ShopSearchScreen(appVm: AppViewModel) {
     }
 
     LaunchedEffect(Unit) {
-        // автокус на поле ввода
         focusRequester.requestFocus()
     }
 
@@ -68,7 +67,6 @@ fun ShopSearchScreen(appVm: AppViewModel) {
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // --- Карточка клуба (как на экране товаров) ---
             item(key = "club_card") {
                 Card(shape = RoundedCornerShape(14.dp)) {
                     Row(
@@ -92,7 +90,6 @@ fun ShopSearchScreen(appVm: AppViewModel) {
                 }
             }
 
-            // --- Строка поиска (реальная) ---
             item(key = "search") {
                 OutlinedTextField(
                     value = query,
@@ -105,7 +102,6 @@ fun ShopSearchScreen(appVm: AppViewModel) {
                 )
             }
 
-            // --- Список товаров без категорий ---
             if (filtered.isEmpty()) {
                 item(key = "empty") {
                     Box(
@@ -166,7 +162,6 @@ fun ShopSearchScreen(appVm: AppViewModel) {
             item(key = "bottom_spacer") { Spacer(Modifier.height(120.dp)) }
         }
 
-        // фиксированная кнопка снизу
         Surface(
             tonalElevation = 2.dp,
             modifier = Modifier
@@ -186,7 +181,6 @@ fun ShopSearchScreen(appVm: AppViewModel) {
         }
     }
 
-    // подтверждение клуба
     if (needConfirmClub) {
         AlertDialog(
             onDismissRequest = { needConfirmClub = false },
@@ -202,7 +196,6 @@ fun ShopSearchScreen(appVm: AppViewModel) {
         )
     }
 
-    // BottomSheet с подробным описанием
     sheetItem?.let { itx ->
         val p = itx.product
         val sheetState = rememberModalBottomSheetState()
@@ -248,7 +241,7 @@ fun ShopSearchScreen(appVm: AppViewModel) {
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold)
                 )
                 if (itx.variant != null) {
-                    AssistChip(onClick = { /* no-op */ }, label = { Text(itx.variant) })
+                    AssistChip(onClick = { }, label = { Text(itx.variant) })
                 }
                 Text(text = p.description, style = MaterialTheme.typography.bodyMedium)
 
@@ -326,7 +319,6 @@ private fun ProductTile(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Картинка
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -339,13 +331,11 @@ private fun ProductTile(
                 Text("Фото", style = MaterialTheme.typography.labelLarge)
             }
 
-            // Цена
             Text(
                 text = "${product.price} ₽",
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold)
             )
 
-            // Название
             Text(
                 text = product.title,
                 style = MaterialTheme.typography.titleMedium,
@@ -353,7 +343,6 @@ private fun ProductTile(
                 overflow = TextOverflow.Ellipsis
             )
 
-            // Подзаголовок (вариант/описание)
             val sub = remember(item) {
                 when {
                     item.variant != null && product.description.isNotBlank() -> "${item.variant} · ${product.description}"
@@ -371,7 +360,6 @@ private fun ProductTile(
                 )
             }
 
-            // Большая кнопка добавления снизу
             QtyBar(
                 qty = qty,
                 onAddFirst = { onPlusFirst(item) },
