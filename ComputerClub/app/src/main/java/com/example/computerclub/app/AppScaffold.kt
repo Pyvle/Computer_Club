@@ -27,7 +27,10 @@ fun AppScaffold(
             route.startsWith(Routes.History) ||
             route.startsWith(Routes.Profile)
 
-    val showTopBar = showBottomBar && !route.startsWith(Routes.Clubs)
+    // ✅ Топбар скрываем на "Клубы" и на "Корзина" (корзина рисует свой верх внутри экрана)
+    val showTopBar = showBottomBar &&
+            !route.startsWith(Routes.Clubs) &&
+            !route.startsWith(Routes.Cart)
 
     var topUpOpen by remember { mutableStateOf(false) }
 
