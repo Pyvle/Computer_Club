@@ -69,7 +69,18 @@ fun BookingSetupScreen(
     val scopeSnack = rememberCoroutineScope()
 
     val draft = appVm.bookingDraft
-    val club = remember(draft.clubId) { FakeData.clubs.first { it.id == draft.clubId } }
+    val club = remember(draft.clubId, appVm.clubs) {
+        appVm.clubs.firstOrNull { it.id == draft.clubId }
+            ?: FakeData.clubs.first { it.id == draft.clubId }
+    }
+
+    // загружаем места и доступность — нужно для "Быстрой брони"
+    LaunchedEffect(draft.clubId, appVm.user) {
+        appVm.loadSeatsAndAvailability(force = true)
+    }
+    LaunchedEffect(draft.startDayOffset, draft.startMin, draft.endDayOffset, draft.endMin) {
+        appVm.loadSeatsAndAvailability(force = false)
+    }
 
     // абсолютные минуты от draft.date
     val startAbsMin = draft.startDayOffset * DAY_MIN + draft.startMin
@@ -147,7 +158,7 @@ fun BookingSetupScreen(
         selectableDates = object : SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long): Boolean {
                 val d = Instant.ofEpochMilli(utcTimeMillis).atZone(zone).toLocalDate()
-                return !d.isBefore(today) // ✅ нельзя прошлое
+                return !d.isBefore(today) // прошедшие даты недопустимы
             }
 
             override fun isSelectableYear(year: Int): Boolean {
@@ -255,12 +266,13 @@ fun BookingSetupScreen(
                     val ok = appVm.quickBookOneSeat()
                     if (ok) {
                         // В корзину бронь попадает только после выбора места (быстрая бронь делает выбор автоматически)
-                        val res = appVm.commitCurrentBookingToCart()
-                        if (res.ok) {
-                            onQuickBookToCart()
-                        } else {
-                            scopeSnack.launch {
-                                snackbarHostState.showSnackbar(res.message ?: "Не удалось добавить в корзину")
+                        appVm.commitCurrentBookingToCartAsync { res ->
+                            if (res.ok) {
+                                onQuickBookToCart()
+                            } else {
+                                scopeSnack.launch {
+                                    snackbarHostState.showSnackbar(res.message ?: "Не удалось добавить в корзину")
+                                }
                             }
                         }
                     } else {
@@ -649,7 +661,7 @@ private fun DateStrip(
     }
 }
 
-// ---- helpers ----
+// --- вспомогательные функции ---
 
 private fun formatTime(absMin: Int): String {
     val m = ((absMin % DAY_MIN) + DAY_MIN) % DAY_MIN

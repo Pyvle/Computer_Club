@@ -23,10 +23,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.computerclub.data.FakeData
 import com.example.computerclub.model.Seat
 import com.example.computerclub.model.SeatAvailability
 import com.example.computerclub.model.SeatType
+import com.example.computerclub.model.FloorplanSeatPos
 import com.example.computerclub.model.TimeRange
 import com.example.computerclub.vm.AppViewModel
 import kotlinx.coroutines.launch
@@ -37,14 +37,6 @@ import java.util.Locale
 import kotlin.math.ceil
 
 private const val DAY_MIN = 24 * 60
-
-private data class SeatPosFrac(
-    val seatId: String,
-    val number: String,
-    val x: Float,   // 0..1
-    val y: Float,   // 0..1
-    val size: Float // доля от ширины контейнера
-)
 
 // UI: только 3 состояния (свободно / занято / выбрано)
 private enum class SeatKind { FREE, BOOKED, SELECTED }
@@ -65,12 +57,22 @@ fun BookingSeatsScreen(
     onGoToCart: () -> Unit
 ) {
     val clubId = appVm.selectedClubId
-    val club = remember(clubId) { FakeData.clubs.firstOrNull { it.id == clubId } }
-    val seats: List<Seat> = remember(clubId) { FakeData.seatMapByClub[clubId].orEmpty() }
+    val club = remember(clubId, appVm.clubs) { appVm.clubs.firstOrNull { it.id == clubId } }
+    val seats: List<Seat> = appVm.clubSeats
 
     if (club == null) {
         Column(Modifier.fillMaxSize().padding(16.dp)) { Text("Сначала выбери клуб.") }
         return
+    }
+
+    // загружаем места и доступность с сервера
+    LaunchedEffect(clubId, appVm.user) {
+        appVm.loadSeatsAndAvailability(force = true)
+    }
+
+    // обновляем доступность при смене интервала
+    LaunchedEffect(appVm.bookingDraft.startDayOffset, appVm.bookingDraft.startMin, appVm.bookingDraft.endDayOffset, appVm.bookingDraft.endMin) {
+        appVm.loadSeatsAndAvailability(force = false)
     }
 
     val snackbar = remember { SnackbarHostState() }
@@ -95,7 +97,10 @@ fun BookingSeatsScreen(
     fun zoomOut() { userScale = (userScale / 1.15f).coerceIn(0.8f, 3.5f) }
     fun resetView() { userScale = 1f; pan = Offset.Zero }
 
-    val layout = remember(seats) { buildLayoutPercent(seats) }
+    // layout берём из опубликованной схемы (если есть) — иначе fallback на алгоритм по умолчанию
+    val layout: List<FloorplanSeatPos> = remember(seats, appVm.floorplanSeats) {
+        if (appVm.floorplanSeats.isNotEmpty()) appVm.floorplanSeats else buildLayoutPercent(seats)
+    }
 
     // --- нижние шторки ---
     var sheetKind by remember { mutableStateOf<SeatsSheetKind?>(null) }
@@ -103,8 +108,8 @@ fun BookingSeatsScreen(
 
     // --- подготовка данных для шторки “макс. время” ---
     val startMinOfDay = draft.startMin // достаточно минут дня (FakeData без даты)
-    val maxTimeRows by remember(seats, startMinOfDay) {
-        mutableStateOf(buildMaxTimeRows(seats, startMinOfDay))
+    val maxTimeRows by remember(seats, startMinOfDay, appVm.busySeatIds) {
+        mutableStateOf(buildMaxTimeRows(seats, startMinOfDay, appVm.busySeatIds))
     }
 
     Scaffold(
@@ -192,22 +197,20 @@ fun BookingSeatsScreen(
                         layout.forEach { p ->
                             val seat = seats.firstOrNull { it.id == p.seatId } ?: return@forEach
                             val selectedSeat = draft.selectedSeatIds.contains(seat.id)
-                            val availability = appVm.seatAvailability(seat, range, startDt, endDt)
+                            // доступность приходит с сервера: любое занятое = BOOKED
+                            val isBooked = appVm.busySeatIds.contains(seat.id)
 
-                            // Приватность: пользователю не показываем детали чужих броней.
-                            // Любая занятость/ограничение считаются как "ЗАНЯТО".
-                            val isBooked = availability != SeatAvailability.FREE
-
-                            val seatSizeDp = (planW.value * p.size).dp.coerceIn(28.dp, 42.dp)
+                            val seatW = (planW.value * p.w).dp.coerceIn(28.dp, 64.dp)
+                            val seatH = (planH.value * p.h).dp.coerceIn(28.dp, 64.dp)
 
                             val baseModifier = Modifier
                                 .offset(
                                     x = (planW.value * p.x).dp,
                                     y = (planH.value * p.y).dp
                                 )
-                                .size(seatSizeDp)
+                                .size(width = seatW, height = seatH)
 
-                            // Занятые места не кликабельны. Выбранные можно снять.
+                            // занятые места не кликабельны; выбранные можно снять
                             val clickModifier = if (!isBooked || selectedSeat) {
                                 baseModifier.combinedClickable(
                                     onClick = { appVm.toggleSeat(seat.id) },
@@ -219,7 +222,7 @@ fun BookingSeatsScreen(
 
                             SeatSquare(
                                 modifier = clickModifier,
-                                number = p.number,
+                                number = seatNumber(seat.label),
                                 kind = when {
                                     selectedSeat -> SeatKind.SELECTED
                                     isBooked -> SeatKind.BOOKED
@@ -230,7 +233,7 @@ fun BookingSeatsScreen(
                     }
                 }
 
-                // --- Кнопки под схемой (добавили i и ⏱ справа от +) ---
+                // --- Кнопки под схемой ---
                 MapControlsCompact(
                     modifier = Modifier.fillMaxWidth(),
                     onZoomOut = ::zoomOut,
@@ -249,12 +252,13 @@ fun BookingSeatsScreen(
 
             Button(
                 onClick = {
-                    val res = appVm.commitCurrentBookingToCart()
-                    if (res.ok) {
-                        onGoToCart()
-                    } else {
-                        scope.launch {
-                            snackbar.showSnackbar(res.message ?: "Не удалось добавить в корзину")
+                    appVm.commitCurrentBookingToCartAsync { res ->
+                        if (res.ok) {
+                            onGoToCart()
+                        } else {
+                            scope.launch {
+                                snackbar.showSnackbar(res.message ?: "Не удалось добавить в корзину")
+                            }
                         }
                     }
                 },
@@ -285,7 +289,7 @@ fun BookingSeatsScreen(
         }
     }
 
-    // --- long-press диалог по месту (оставил как было) ---
+    // --- Диалог long-press по месту ---
     if (seatInfo != null) {
         AlertDialog(
             onDismissRequest = { seatInfo = null },
@@ -296,7 +300,7 @@ fun BookingSeatsScreen(
     }
 }
 
-// ---------------- ШТОРКИ ----------------
+// --- Шторки ---
 
 @Composable
 private fun SeatsInfoSheet() {
@@ -411,7 +415,7 @@ private fun MaxTimeRow(r: SeatMaxTimeRow) {
     }
 }
 
-// ---------------- фон ----------------
+// --- Фон ---
 
 @Composable
 private fun HallBackgroundFill() {
@@ -482,7 +486,7 @@ private fun HallBackgroundFill() {
     }
 }
 
-// ---------------- места ----------------
+// --- Места ---
 
 @Composable
 private fun SeatSquare(
@@ -526,7 +530,7 @@ private fun SeatSquare(
     }
 }
 
-// ---------------- панель управления (компактная) ----------------
+// --- Панель управления ---
 
 @Composable
 private fun MapControlsCompact(
@@ -577,25 +581,27 @@ private fun SmallSquareButtonCompact(text: String, onClick: () -> Unit) {
     }
 }
 
-// ---------------- координаты мест (проценты) ----------------
+// --- Координаты мест ---
 
-private fun buildLayoutPercent(seats: List<Seat>): List<SeatPosFrac> {
-    fun seatNumber(label: String): String = label.substringAfterLast('-').trim()
+private fun seatNumber(label: String): String = label.substringAfterLast('-').trim()
+
+private fun buildLayoutPercent(seats: List<Seat>): List<FloorplanSeatPos> {
 
     val vip = seats.filter { it.type == SeatType.VIP }.sortedBy { it.label }
     val reg = seats.filter { it.type != SeatType.VIP }.sortedBy { it.label }
 
-    val out = mutableListOf<SeatPosFrac>()
-    val seatSize = 0.10f
+    val out = mutableListOf<FloorplanSeatPos>()
+    val seatW = 0.10f
+    val seatH = 0.10f
 
     // VIP: 4 места
     vip.take(4).forEachIndexed { i, s ->
-        out += SeatPosFrac(
+        out += FloorplanSeatPos(
             seatId = s.id,
-            number = seatNumber(s.label),
             x = 0.18f + i * 0.14f,
             y = 0.14f,
-            size = seatSize
+            w = seatW,
+            h = seatH
         )
     }
 
@@ -603,19 +609,19 @@ private fun buildLayoutPercent(seats: List<Seat>): List<SeatPosFrac> {
     reg.forEachIndexed { i, s ->
         val col = i % 7
         val row = i / 7
-        out += SeatPosFrac(
+        out += FloorplanSeatPos(
             seatId = s.id,
-            number = seatNumber(s.label),
             x = 0.16f + col * 0.11f,
             y = 0.45f + row * 0.12f,
-            size = seatSize
+            w = seatW,
+            h = seatH
         )
     }
 
     return out
 }
 
-// ---------------- строка выбранных мест ----------------
+// --- Строка выбранных мест ---
 
 private fun selectedSeatsLabel(selectedIds: Set<String>, seats: List<Seat>): String {
     if (selectedIds.isEmpty()) return "Вы выбрали 0 мест"
@@ -644,7 +650,7 @@ private fun selectedSeatsLabel(selectedIds: Set<String>, seats: List<Seat>): Str
     return "Вы выбрали место: ${parts.joinToString(" ")}."
 }
 
-// ---------------- строка времени ----------------
+// --- Строка времени ---
 
 private fun headerLine(startDt: LocalDateTime, endDt: LocalDateTime, durationMin: Int): String {
     val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
@@ -661,18 +667,20 @@ private fun formatDuration(deltaMin: Int): String {
     return if (h > 0) "${h}ч ${m}м" else "${m}м"
 }
 
-// ---------------- max-time logic (мок по seat.booked) ----------------
+// --- Логика max-time (мок) ---
 
-private fun buildMaxTimeRows(seats: List<Seat>, startMinOfDay: Int): List<SeatMaxTimeRow> {
+private fun buildMaxTimeRows(
+    seats: List<Seat>,
+    startMinOfDay: Int,
+    busySeatIds: Set<String>
+): List<SeatMaxTimeRow> {
     // горизонт: 3 суток, чтобы можно было показать “> дня”
     val horizonMin = 3 * DAY_MIN
 
     return seats.map { seat ->
-        val maxMin = maxContinuousFreeFromStart(
-            startMin = startMinOfDay,
-            booked = seat.booked,
-            horizonMin = horizonMin
-        )
+        // сервер даёт занятость только для выбранного интервала — max-time считаем упрощённо:
+        // если место занято — 0, иначе показываем полный горизонт
+        val maxMin = if (seat.id in busySeatIds) 0 else horizonMin
 
         val maxLabel = if (maxMin <= 0) "0м" else formatDurationWithDays(maxMin)
         val untilLabel = if (maxMin <= 0) "—" else formatUntilTime(startMinOfDay, maxMin)
@@ -687,11 +695,9 @@ private fun buildMaxTimeRows(seats: List<Seat>, startMinOfDay: Int): List<SeatMa
 }
 
 /**
- * Максимальная непрерывная “свободная полоса” от startMin вперёд до ближайшей брони.
- * seat.booked задан внутри суток и может быть “wrap” (23:30–01:00).
- *
- * Мы разворачиваем брони в сегменты и “дублируем” на следующие сутки, чтобы поймать
- * ситуацию вида: старт 23:30, а бронь 00:00–01:00 (на след. день).
+ * Вычисляет максимальную непрерывную свободную полосу от startMin до ближайшей брони.
+ * Брони могут быть “wrap” (23:30–01:00) — разворачиваем в сегменты и дублируем на
+ * следующие сутки, чтобы поймать ситуацию: старт 23:30, бронь 00:00–01:00.
  */
 private fun maxContinuousFreeFromStart(
     startMin: Int,
@@ -714,8 +720,7 @@ private fun maxContinuousFreeFromStart(
     fun inside(t: Int, seg: Pair<Int, Int>) = t >= seg.first && t < seg.second
     if (baseSeg.any { inside(startMin, it) }) return 0
 
-    // Риск продления (мок): бронь может продлиться до +2 часов.
-    // Если старт попадает в эту зону — считаем место недоступным.
+    // мок: бронь может продлиться до +2 часов от конца — считаем место недоступным в зоне риска
     val extSeg = baseSeg.flatMap { (s, e) ->
         val e2 = e + 120
         if (e2 <= DAY_MIN) listOf(s to e2)

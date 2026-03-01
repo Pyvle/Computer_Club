@@ -12,23 +12,56 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.computerclub.data.FakeData
 import com.example.computerclub.vm.AppViewModel
+
+import kotlinx.coroutines.launch
 
 @Composable
 fun CartScreen(
     appVm: AppViewModel,
-    onEditBooking: (String) -> Unit
+    onEditBooking: (String) -> Unit,
+    onPaid: () -> Unit
 ) {
-    val clubName = remember(appVm.selectedClubId) {
-        FakeData.clubs.firstOrNull { it.id == appVm.selectedClubId }?.name ?: "Клуб"
+    val club = remember(appVm.selectedClubId, appVm.clubs) {
+        appVm.clubs.firstOrNull { it.id == appVm.selectedClubId }
     }
+
+    // не делаем forced-sync: иначе после переходов могут возвращаться удалённые товары
+    LaunchedEffect(appVm.selectedClubId, appVm.user, club?.isBlocked) {
+        if (appVm.user != null && club != null && !club.isBlocked) {
+            appVm.syncCartProducts(force = false)
+        }
+    }
+
+    if (appVm.user == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Войдите, чтобы увидеть корзину")
+        }
+        return
+    }
+
+    if (club?.isBlocked == true) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Вы заблокированы в этом клубе. Корзина недоступна.")
+        }
+        return
+    }
+
+    val clubName = club?.name ?: "Клуб"
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     val bookingCost = appVm.cartBookingsTotal(appVm.selectedClubId)
     val productsCost = appVm.cartTotal(appVm.selectedClubId)
     val total = bookingCost + productsCost
 
     Box(Modifier.fillMaxSize()) {
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -37,7 +70,7 @@ fun CartScreen(
             // место под нижнюю кнопку "Оплатить"
             contentPadding = PaddingValues(bottom = 96.dp)
         ) {
-            // ВЕРХ: название клуба + мусорка
+            // --- Верх ---
             item(key = "top_club_bar") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -60,7 +93,7 @@ fun CartScreen(
                 }
             }
 
-            // --- БРОНИ ---
+            // --- Брони ---
             item { Text("Бронирования", style = MaterialTheme.typography.titleMedium) }
 
             val hasBookings = appVm.bookingCartLines.isNotEmpty()
@@ -146,7 +179,6 @@ fun CartScreen(
                     }
                 }
 
-                // ✅ Сумма бронирований перед товарами
                 item(key = "booking_subtotal") {
                     Text(
                         text = "Итого бронирования: $bookingCost ₽",
@@ -158,7 +190,7 @@ fun CartScreen(
 
             item { Divider() }
 
-            // --- ТОВАРЫ ---
+            // --- Товары ---
             item { Text("Товары и услуги", style = MaterialTheme.typography.titleMedium) }
 
             val hasProducts = appVm.cartLines.isNotEmpty()
@@ -220,7 +252,6 @@ fun CartScreen(
                     }
                 }
 
-                // ✅ Сумма товаров перед итоговой ценой
                 item(key = "products_subtotal") {
                     Text(
                         text = "Итого товары: $productsCost ₽",
@@ -232,13 +263,11 @@ fun CartScreen(
 
             item { Divider() }
 
-            // ✅ ИТОГОВАЯ ЦЕНА — под всеми товарами
             item(key = "total") {
                 Text("Итого: $total ₽", style = MaterialTheme.typography.titleLarge)
             }
         }
 
-        // ✅ Одна кнопка на всю ширину, без цены
         Surface(
             tonalElevation = 2.dp,
             modifier = Modifier
@@ -247,7 +276,12 @@ fun CartScreen(
         ) {
             Button(
                 onClick = {
-                    // TODO: позже подключим реальную оплату
+                    appVm.checkoutServer(
+                        onSuccess = { onPaid() },
+                        onError = { msg ->
+                            scope.launch { snackbarHostState.showSnackbar(msg) }
+                        }
+                    )
                 },
                 modifier = Modifier
                     .fillMaxWidth()

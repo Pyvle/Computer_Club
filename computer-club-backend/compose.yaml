@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: 'postgres:latest'
+    environment:
+      - 'POSTGRES_DB=clubdb'
+      - 'POSTGRES_PASSWORD=club'
+      - 'POSTGRES_USER=club'
+    ports:
+      - '5433:5432'
+  redis:
+    image: 'redis:latest'
+    ports:
+      - '6379:6379'

@@ -1,0 +1,8 @@
+package com.club.backend.repository
+
+import com.club.backend.domain.entity.ClubEntity
+import org.springframework.data.jpa.repository.JpaRepository
+
+interface ClubRepository : JpaRepository<ClubEntity, Long> {
+    fun findAllByIsActiveTrueOrderByIdAsc(): List<ClubEntity>
+}

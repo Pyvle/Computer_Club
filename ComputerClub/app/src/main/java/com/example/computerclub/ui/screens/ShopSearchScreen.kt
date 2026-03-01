@@ -22,7 +22,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.computerclub.data.FakeData
 import com.example.computerclub.model.Product
 import com.example.computerclub.vm.AppViewModel
 import kotlinx.coroutines.launch
@@ -41,13 +40,35 @@ fun ShopSearchScreen(appVm: AppViewModel) {
     val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
 
-    val club = remember(appVm.selectedClubId) {
-        FakeData.clubs.first { it.id == appVm.selectedClubId }
+    val club = remember(appVm.selectedClubId, appVm.clubs) {
+        appVm.clubs.firstOrNull { it.id == appVm.selectedClubId }
     }
 
-    // ✅ Все товары для выбранного клуба как плоский список (варианты тоже отдельными позициями)
-    val allItems = remember(appVm.selectedClubId) {
-        FakeData.productsForClub(appVm.selectedClubId).flatMap { it.toShopItems() }
+    if (appVm.user == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Войдите, чтобы искать товары")
+        }
+        return
+    }
+
+    if (club?.isBlocked == true) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Вы заблокированы в этом клубе. Выберите другой клуб.")
+        }
+        return
+    }
+
+    // не делаем forced-sync при каждом заходе на экран
+    LaunchedEffect(appVm.selectedClubId, appVm.user, club?.isBlocked) {
+        if (appVm.user != null && club != null && !club.isBlocked) {
+            appVm.loadShopData(force = false)
+            appVm.syncCartProducts(force = false)
+        }
+    }
+
+    // все товары меню для выбранного клуба как плоский список
+    val allItems = remember(appVm.selectedClubId, appVm.shopProducts) {
+        appVm.shopProducts.flatMap { it.toShopItems() }
     }
 
     val filtered = remember(normalizedQuery, allItems) {
@@ -76,12 +97,12 @@ fun ShopSearchScreen(appVm: AppViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text(club.name, style = MaterialTheme.typography.titleMedium)
-                            Text(club.address, style = MaterialTheme.typography.bodyMedium)
+                            Text(club?.name ?: "Клуб", style = MaterialTheme.typography.titleMedium)
+                            Text(club?.address ?: "", style = MaterialTheme.typography.bodyMedium)
                         }
-                        IconButton(onClick = { appVm.toggleFavoriteClub(club.id) }) {
+                        IconButton(onClick = { club?.let { appVm.toggleFavoriteClub(it.id) } }) {
                             Icon(
-                                imageVector = if (appVm.isFavoriteClub(club.id))
+                                imageVector = if (club != null && appVm.isFavoriteClub(club.id))
                                     Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                                 contentDescription = "Избранное"
                             )
@@ -192,7 +213,7 @@ fun ShopSearchScreen(appVm: AppViewModel) {
             },
             dismissButton = { TextButton(onClick = { needConfirmClub = false }) { Text("Отмена") } },
             title = { Text("Подтверди клуб") },
-            text = { Text("Ты сейчас заказываешь для клуба: ${club.name}") }
+            text = { Text("Ты сейчас заказываешь для клуба: ${club?.name ?: "Клуб"}") }
         )
     }
 

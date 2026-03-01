@@ -1,0 +1,8 @@
+app:
+  otp:
+    ttl-seconds: 1800               # 30 мин
+    max-attempts: 999999
+    resend-cooldown-seconds: 0
+    max-requests-per-hour: 999999
+    limits-enabled: false           # отключаем лимиты полностью
+    debug-return-code: true         # возвращаем код в ответе

@@ -20,6 +20,20 @@ fun AppNav(appVm: AppViewModel) {
         appVm.onRouteChanged(route)
     }
 
+    LaunchedEffect(Unit) {
+        appVm.loadMe()
+        appVm.loadClubs()
+    }
+
+    // единый стиль навигации для верхнеуровневых экранов (как в нижней панели)
+    fun navigateTopLevel(dest: String) {
+        nav.navigate(dest) {
+            launchSingleTop = true
+            restoreState = true
+            popUpTo(Routes.Clubs) { saveState = true }
+        }
+    }
+
     AppScaffold(
         route = route,
         nav = nav,
@@ -52,10 +66,7 @@ fun AppNav(appVm: AppViewModel) {
                     appVm = appVm,
                     onBack = { nav.popBackStack() },
                     onChosen = {
-                        // после выбора — логично отправить в бронирование
-                        nav.navigate(Routes.Booking) {
-                            launchSingleTop = true
-                        }
+                        nav.navigate(Routes.Booking) { launchSingleTop = true }
                     }
                 )
             }
@@ -64,77 +75,85 @@ fun AppNav(appVm: AppViewModel) {
                 BookingSetupScreen(
                     appVm = appVm,
                     onNext = { nav.navigate(Routes.BookingSeats) },
-                    onQuickBookToCart = { nav.navigate(Routes.Cart) }
+                    // в корзину — строго top-level
+                    onQuickBookToCart = { navigateTopLevel(Routes.Cart) }
                 )
             }
 
             composable(Routes.BookingSeats) {
                 BookingSeatsScreen(
                     appVm = appVm,
-                    onGoToCart = {
-                        nav.navigate(Routes.Cart)
-                    }
+                    // в корзину — строго top-level
+                    onGoToCart = { navigateTopLevel(Routes.Cart) }
                 )
             }
 
             composable(Routes.Shop) {
                 ShopScreen(
                     appVm = appVm,
+                    // в корзину — строго top-level, иначе нижняя панель “залипает”
+                    onOpenCart = { navigateTopLevel(Routes.Cart) }
                 )
             }
 
             composable(Routes.ShopSearch) {
                 ShopSearchScreen(appVm = appVm)
             }
+
             composable(Routes.Cart) {
                 CartScreen(
                     appVm = appVm,
                     onEditBooking = { lineId ->
                         if (appVm.beginEditBooking(lineId)) {
-                            nav.navigate(Routes.Booking) {
-                                launchSingleTop = true
-                                restoreState = true
-                            }
+                            // можно оставить так, но лучше тоже top-level:
+                            navigateTopLevel(Routes.Booking)
                         }
-                    }
+                    },
+                    onPaid = { navigateTopLevel(Routes.History) }
                 )
             }
+
             composable(Routes.History) { HistoryScreen(appVm = appVm) }
             composable(Routes.Profile) { ProfileScreen(appVm = appVm, nav = nav) }
 
             composable(
-                route = Routes.Login,
+                route = Routes.LoginPhone,
                 arguments = listOf(navArgument("from") { type = NavType.StringType; defaultValue = Routes.Clubs })
             ) { entry ->
                 val from = entry.arguments?.getString("from") ?: Routes.Clubs
-                LoginScreen(
+                LoginPhoneScreen(
                     appVm = appVm,
                     fromRoute = from,
-                    onSuccess = {
-                        nav.navigate(from) {
-                            popUpTo(Routes.Login) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    },
-                    onGoRegister = { nav.navigate("register?from=$from") }
+                    onGoCode = { challengeId, phone ->
+                        nav.navigate("login_code?from=$from&phone=$phone&challengeId=$challengeId")
+                    }
                 )
             }
 
             composable(
-                route = Routes.Register,
-                arguments = listOf(navArgument("from") { type = NavType.StringType; defaultValue = Routes.Clubs })
+                route = Routes.LoginCode,
+                arguments = listOf(
+                    navArgument("from") { type = NavType.StringType; defaultValue = Routes.Clubs },
+                    navArgument("phone") { type = NavType.StringType; defaultValue = "" },
+                    navArgument("challengeId") { type = NavType.LongType; defaultValue = 0L }
+                )
             ) { entry ->
                 val from = entry.arguments?.getString("from") ?: Routes.Clubs
-                RegisterScreen(
+                val phone = entry.arguments?.getString("phone") ?: ""
+                val challengeId = entry.arguments?.getLong("challengeId") ?: 0L
+
+                LoginCodeScreen(
                     appVm = appVm,
                     fromRoute = from,
+                    phone = phone,
+                    challengeId = challengeId,
                     onSuccess = {
                         nav.navigate(from) {
-                            popUpTo(Routes.Register) { inclusive = true }
+                            popUpTo(Routes.LoginPhone) { inclusive = true }
                             launchSingleTop = true
                         }
                     },
-                    onGoLogin = { nav.navigate("login?from=$from") }
+                    onBack = { nav.popBackStack() }
                 )
             }
 

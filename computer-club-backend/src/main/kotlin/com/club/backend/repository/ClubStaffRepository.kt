@@ -1,0 +1,28 @@
+package com.club.backend.repository
+
+import com.club.backend.domain.entity.ClubRole
+import com.club.backend.domain.entity.ClubStaffEntity
+import com.club.backend.domain.entity.ClubStaffId
+import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
+import java.util.Optional
+
+interface ClubStaffRepository : JpaRepository<ClubStaffEntity, ClubStaffId> {
+
+    fun findByIdClubIdAndIdUserId(clubId: Long, userId: Long): Optional<ClubStaffEntity>
+
+    @Query(
+        """
+        select count(cs) > 0 from ClubStaffEntity cs
+        where cs.club.id = :clubId and cs.user.id = :userId and cs.role in :roles
+        """
+    )
+    fun existsWithAnyRole(
+        @Param("clubId") clubId: Long,
+        @Param("userId") userId: Long,
+        @Param("roles") roles: Collection<ClubRole>
+    ): Boolean
+
+    fun findAllByIdClubId(clubId: Long): List<ClubStaffEntity>
+}

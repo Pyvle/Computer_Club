@@ -28,7 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import com.example.computerclub.data.FakeData
 import com.example.computerclub.model.Product
 import com.example.computerclub.vm.AppViewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -38,9 +37,12 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ShopScreen(appVm: AppViewModel) {
+fun ShopScreen(
+    appVm: AppViewModel,
+    onOpenCart: () -> Unit
+) {
     var query by remember { mutableStateOf("") }
-    var selectedCategoryId by remember { mutableStateOf(FakeData.categories.first().id) }
+    var selectedCategoryId by remember { mutableStateOf("") }
 
     var needConfirmClub by remember { mutableStateOf(false) }
     var sheetProduct by remember { mutableStateOf<Product?>(null) }
@@ -48,8 +50,53 @@ fun ShopScreen(appVm: AppViewModel) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    val club = remember(appVm.selectedClubId) {
-        FakeData.clubs.first { it.id == appVm.selectedClubId }
+    val club = remember(appVm.selectedClubId, appVm.clubs) {
+        appVm.clubs.firstOrNull { it.id == appVm.selectedClubId }
+    }
+
+    // не делаем forced-sync при каждом входе/переходе — это вызывает "возврат" удалённых товаров
+    LaunchedEffect(appVm.selectedClubId, appVm.user, club?.isBlocked) {
+        if (appVm.user != null && club != null && !club.isBlocked) {
+            appVm.loadShopData(force = false)
+            appVm.syncCartProducts(force = false)
+        }
+    }
+
+    val categories = appVm.shopCategories
+    val products = appVm.shopProducts
+
+    LaunchedEffect(categories) {
+        if (selectedCategoryId.isBlank() && categories.isNotEmpty()) {
+            selectedCategoryId = categories.first().id
+        }
+    }
+
+    if (appVm.user == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Войдите, чтобы увидеть меню клуба")
+        }
+        return
+    }
+
+    if (club?.isBlocked == true) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Вы заблокированы в этом клубе. Выберите другой клуб.")
+        }
+        return
+    }
+
+    if (appVm.shopLoading && categories.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    appVm.shopError?.let { err ->
+        if (categories.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(err) }
+            return
+        }
     }
 
     // --- измеряем высоту липких чипов ---
@@ -60,17 +107,15 @@ fun ShopScreen(appVm: AppViewModel) {
     val fallbackChipsPx = remember(density) { with(density) { 56.dp.toPx().roundToInt() } }
 
     fun chipsTotalPx(): Int = (if (chipsHeightPx > 0) chipsHeightPx else fallbackChipsPx) + gapPx
+
+    // scrollOffset в LazyList — сколько пикселей срезать сверху item
+    // чтобы заголовок был ниже липких чипов, offset должен быть отрицательным
     fun scrollOffsetForHeader(): Int = -chipsTotalPx()
 
-    // ✅ Меню зависит от выбранного клуба
-    val clubProducts = remember(appVm.selectedClubId) {
-        FakeData.productsForClub(appVm.selectedClubId)
-    }
-
-    // Категории не скрываем — фильтруем только товары выбранного клуба
-    val sectionsAll = remember(query, clubProducts) {
-        FakeData.categories.map { cat ->
-            val list = clubProducts
+    // Категории не скрываем — фильтруем только товары
+    val sectionsAll = remember(query, categories, products) {
+        categories.map { cat ->
+            val list = products
                 .filter { it.categoryId == cat.id }
                 .filter {
                     query.isBlank() ||
@@ -81,8 +126,10 @@ fun ShopScreen(appVm: AppViewModel) {
         }
     }
 
+    // Элементы до категорий в LazyColumn: club_card, search, stickyHeader(chips)
     val headerOffset = 3
 
+    // Индекс ЗАГОЛОВКА каждой категории в LazyColumn
     val headerIndexByCatId = remember(sectionsAll) {
         val map = mutableMapOf<String, Int>()
         var idx = headerOffset
@@ -96,6 +143,7 @@ fun ShopScreen(appVm: AppViewModel) {
 
     var isAutoScrolling by remember { mutableStateOf(false) }
 
+    // плавно скроллим к заголовку категории так, чтобы он был виден под чипами
     suspend fun animateToCategory(catId: String) {
         val idx = headerIndexByCatId[catId] ?: return
         isAutoScrolling = true
@@ -106,6 +154,7 @@ fun ShopScreen(appVm: AppViewModel) {
             scrollOffset = scrollOffsetForHeader()
         )
 
+        // микродоводка до идеала (1–2px, обычно незаметно)
         val desiredY = chipsTotalPx()
         repeat(2) {
             val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == idx } ?: return@repeat
@@ -117,8 +166,9 @@ fun ShopScreen(appVm: AppViewModel) {
         isAutoScrolling = false
     }
 
+    // подсветка категории при скролле по "линии под чипами"
     LaunchedEffect(listState, headerIndexByCatId, chipsHeightPx) {
-        val headers = FakeData.categories.mapNotNull { cat ->
+        val headers = categories.mapNotNull { cat ->
             headerIndexByCatId[cat.id]?.let { cat.id to it }
         }.sortedBy { it.second }
 
@@ -145,8 +195,11 @@ fun ShopScreen(appVm: AppViewModel) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            // чтобы контент не прятался под нижней кнопкой
+            contentPadding = PaddingValues(bottom = 96.dp)
         ) {
+            // --- Карточка клуба ---
             item(key = "club_card") {
                 Card(shape = RoundedCornerShape(14.dp)) {
                     Row(
@@ -156,12 +209,12 @@ fun ShopScreen(appVm: AppViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text(club.name, style = MaterialTheme.typography.titleMedium)
-                            Text(club.address, style = MaterialTheme.typography.bodyMedium)
+                            Text(club?.name ?: "Клуб", style = MaterialTheme.typography.titleMedium)
+                            Text(club?.address ?: "", style = MaterialTheme.typography.bodyMedium)
                         }
-                        IconButton(onClick = { appVm.toggleFavoriteClub(club.id) }) {
+                        IconButton(onClick = { club?.let { appVm.toggleFavoriteClub(it.id) } }) {
                             Icon(
-                                imageVector = if (appVm.isFavoriteClub(club.id))
+                                imageVector = if (club != null && appVm.isFavoriteClub(club.id))
                                     Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                                 contentDescription = "Избранное"
                             )
@@ -170,6 +223,7 @@ fun ShopScreen(appVm: AppViewModel) {
                 }
             }
 
+            // --- Поиск ---
             item(key = "search") {
                 OutlinedTextField(
                     value = query,
@@ -180,6 +234,7 @@ fun ShopScreen(appVm: AppViewModel) {
                 )
             }
 
+            // --- Липкие чипы ---
             stickyHeader(key = "chips") {
                 Surface(
                     modifier = Modifier
@@ -196,7 +251,7 @@ fun ShopScreen(appVm: AppViewModel) {
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(FakeData.categories, key = { it.id }) { cat ->
+                        items(categories, key = { it.id }) { cat ->
                             FilterChip(
                                 selected = selectedCategoryId == cat.id,
                                 onClick = { scope.launch { animateToCategory(cat.id) } },
@@ -207,6 +262,7 @@ fun ShopScreen(appVm: AppViewModel) {
                 }
             }
 
+            // --- Контент ---
             sectionsAll.forEach { (cat, list) ->
                 item(key = "header_${cat.id}") {
                     Text(
@@ -234,7 +290,7 @@ fun ShopScreen(appVm: AppViewModel) {
                     rows.forEachIndexed { rowIndex, rowItems ->
                         item(key = "row_${cat.id}_$rowIndex") {
                             Row(
-                                Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 ProductTile(
@@ -277,10 +333,9 @@ fun ShopScreen(appVm: AppViewModel) {
                     }
                 }
             }
-
-            item(key = "bottom_spacer") { Spacer(Modifier.height(96.dp)) }
         }
 
+        // нижняя кнопка
         Surface(
             tonalElevation = 2.dp,
             modifier = Modifier
@@ -293,13 +348,14 @@ fun ShopScreen(appVm: AppViewModel) {
                     .padding(16.dp)
             ) {
                 Button(
-                    onClick = { /* переход в корзину */ },
+                    onClick = onOpenCart,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("В корзину") }
             }
         }
     }
 
+    // подтверждение клуба
     if (needConfirmClub) {
         AlertDialog(
             onDismissRequest = { needConfirmClub = false },
@@ -311,10 +367,11 @@ fun ShopScreen(appVm: AppViewModel) {
             },
             dismissButton = { TextButton(onClick = { needConfirmClub = false }) { Text("Отмена") } },
             title = { Text("Подтверди клуб") },
-            text = { Text("Ты сейчас заказываешь для клуба: ${club.name}") }
+            text = { Text("Ты сейчас заказываешь для клуба: ${club?.name ?: "Клуб"}") }
         )
     }
 
+    // BottomSheet
     sheetProduct?.let { p ->
         val sheetState = rememberModalBottomSheetState()
 
@@ -331,8 +388,7 @@ fun ShopScreen(appVm: AppViewModel) {
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 18.dp),
+                    .padding(start = 16.dp, end = 16.dp, bottom = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
@@ -405,6 +461,7 @@ private fun ProductTile(
         }
     }
 
+    // светлая тема
     val cardBg = Color(0xFFFFFFFF)
     val imageBg = Color(0xFFF4F4F4)
     val pillBg = Color(0xFFEFEFEF)

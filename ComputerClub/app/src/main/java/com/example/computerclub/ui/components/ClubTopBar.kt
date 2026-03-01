@@ -20,8 +20,6 @@ import androidx.compose.ui.unit.dp
 fun ClubTopBar(
     title: String,
     isLoggedIn: Boolean,
-    balance: Int,
-    onBalanceClick: () -> Unit,
     onLoginClick: () -> Unit,
     hideAuthAction: Boolean = false,
     showBack: Boolean = false,
@@ -46,11 +44,10 @@ fun ClubTopBar(
                 Text(title, modifier = Modifier.weight(1f))
 
                 if (!hideAuthAction) {
-                    if (isLoggedIn) {
-                        TextButton(onClick = onBalanceClick) { Text("$balance ₽") }
-                    } else {
+                    if (!isLoggedIn) {
                         TextButton(onClick = onLoginClick) { Text("Войти") }
                     }
+                    // когда залогинен — ничего не показываем (кошелька нет)
                 }
             }
         }

@@ -1,0 +1,73 @@
+server:
+  port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: on_param
+
+spring:
+  application:
+    name: computer-club-backend
+  profiles:
+    active: dev
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:clubdb}
+    username: ${DB_USER:club}
+    password: ${DB_PASSWORD:club}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: true
+
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger
+
+level:
+  root: INFO
+  org.springframework.web: DEBUG
+  org.springframework.web.servlet.DispatcherServlet: DEBUG
+  org.springframework.orm.jpa: DEBUG
+  org.hibernate.SQL: DEBUG
+  org.hibernate.orm.jdbc.bind: TRACE
+  org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+app:
+  jwt:
+    issuer: computer-club-backend
+    access-exp-minutes: 15
+    refresh-exp-days: 30
+    secret: ${JWT_SECRET:change_me_very_long_secret_32_chars_minimum}
+
+  otp:
+    ttl-seconds: 180
+    max-attempts: 5
+    resend-cooldown-seconds: 60
+    max-requests-per-hour: 5
+    limits-enabled: true
+    debug-return-code: false

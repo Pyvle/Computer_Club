@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material3.Button
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.computerclub.data.FakeData
@@ -30,7 +31,7 @@ fun ClubDetailsScreen(
     onChosen: () -> Unit,
     onBack: () -> Unit
 ) {
-    val club = FakeData.clubs.firstOrNull { it.id == clubId }
+    val club = appVm.clubs.firstOrNull { it.id == clubId }
 
     if (club == null) {
         Text("Клуб не найден")
@@ -76,14 +77,15 @@ fun ClubDetailsScreen(
 
             Spacer(Modifier.weight(1f))
 
-            androidx.compose.material3.Button(
+            Button(
                 onClick = {
                     appVm.chooseClub(club.id)
                     onChosen()
                 },
+                enabled = !club.isBlocked,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Выбрать")
+                Text(if (club.isBlocked) "Заблокирован" else "Выбрать")
             }
         }
     }

@@ -14,8 +14,9 @@ object Routes {
     const val History = "history"
     const val Profile = "profile"
 
-    const val Login = "login?from={from}"
-    const val Register = "register?from={from}"
+    // auth (только телефон)
+    const val LoginPhone = "login_phone?from={from}"
+    const val LoginCode = "login_code?from={from}&phone={phone}&challengeId={challengeId}"
 
     const val Notifications = "notifications"
     const val ProfileDetails = "profile_details"

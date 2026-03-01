@@ -1,0 +1,8 @@
+app:
+  otp:
+    ttl-seconds: 180
+    max-attempts: 5
+    resend-cooldown-seconds: 60
+    max-requests-per-hour: 5
+    limits-enabled: true
+    debug-return-code: false

@@ -1,6 +1,7 @@
 package com.example.computerclub.model
 
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 data class User(val id: String, val username: String, val phone: String)
 
@@ -15,14 +16,14 @@ enum class SeatType { REGULAR, VIP }
 
 data class TimeRange(val startMin: Int, val endMin: Int) {
     /**
-     * Overlap for ranges inside a day.
-     * Supports "wrap" ranges (e.g. 23:30–01:00) by splitting into two segments.
+     * Проверяет пересечение диапазонов внутри суток.
+     * Поддерживает "wrap" (23:30–01:00) — разбивает на два сегмента.
      */
     fun overlaps(other: TimeRange): Boolean {
         fun segments(r: TimeRange): List<Pair<Int, Int>> {
-            // normal
+            // обычный диапазон
             if (r.endMin >= r.startMin) return listOf(r.startMin to r.endMin)
-            // wrap (e.g. 1410..60)
+            // wrap-диапазон (напр. 1410..60)
             return listOf(r.startMin to 24 * 60, 0 to r.endMin)
         }
 
@@ -59,7 +60,9 @@ data class CartProductLine(
     val title: String,
     val price: Int,
     val variant: String?,
-    val qty: Int
+    val qty: Int,
+    // id строки в серверной корзине (null для локальных/мок-строк)
+    val lineId: Long? = null
 )
 
 /**
@@ -81,9 +84,7 @@ data class CartBookingLine(
 
 data class BookingDraft(
     val clubId: String,
-    // Временная фиксация "текущей" даты для удобного тестирования (не читаем дату телефона).
-    // Когда будешь готов привязать к реальному времени — верни LocalDate.now().
-    val date: LocalDate = LocalDate.of(2026, 1, 25),
+    val date: LocalDate = LocalDate.now(),
 
     val startDayOffset: Int = 0,
     val startMin: Int = 18 * 60,
@@ -119,5 +120,70 @@ data class Club(
     val name: String,
     val location: String,
     val address: String,
-    val description: String
+    val description: String,
+
+    // из /clubs/available
+    val isBlocked: Boolean = false,
+    val blockReason: String? = null
+)
+
+// --- Orders / History ---
+
+enum class BookingStatus { UPCOMING, ACTIVE, DONE, CANCELED }
+
+/** Снимок брони внутри оплаты (Purchase). */
+data class BookingOrder(
+    val id: String,
+    val clubId: String,
+    val clubName: String,
+    val startAt: LocalDateTime,
+    val endAt: LocalDateTime,
+    val seatIds: List<String>,
+    val seatLabels: List<String>,
+    val packageHours: Int?,
+    val rateRubPerHour: Int,
+    val totalRub: Int,
+    val status: BookingStatus = BookingStatus.UPCOMING
+)
+
+enum class ProductOrderStatus { NOT_READY, READY, CANCELED }
+
+enum class ReadyByPolicy { ASAP, BOOKING_START, CUSTOM }
+
+data class ProductOrderItemSnapshot(
+    val productId: String,
+    val title: String,
+    val variant: String?,
+    val priceRub: Int,
+    val qty: Int
+)
+
+/** Один заказ на товары/услуги в рамках оплаты (Purchase). */
+data class ProductOrder(
+    val id: String,
+    val clubId: String,
+    val clubName: String,
+    val createdAt: LocalDateTime,
+    val readyBy: LocalDateTime?,
+    val readyByPolicy: ReadyByPolicy,
+    val status: ProductOrderStatus,
+    val items: List<ProductOrderItemSnapshot>,
+    val totalRub: Int
+)
+
+/**
+ * Одна оплата. Может содержать бронь и/или заказ товаров.
+ * Это удобная модель под БД и админку.
+ */
+data class Purchase(
+    val id: String,
+    val clubId: String,
+    val clubName: String,
+    val createdAt: LocalDateTime,
+    val bookingOrders: List<BookingOrder>,
+    val productOrder: ProductOrder?,
+    val bookingTotalRub: Int,
+    val productsTotalRub: Int,
+    val totalRub: Int,
+    val paymentStatus: String = "PAID"
 )

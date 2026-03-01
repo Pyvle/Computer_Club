@@ -31,7 +31,9 @@ fun ClubsListScreen(
     var tab by rememberSaveable { mutableStateOf(ClubsTab.All) } // можно Favorites, если хочешь
     var mapMode by rememberSaveable { mutableStateOf(false) }    // false = список, true = карта
 
-    val all = FakeData.clubs
+    val all = appVm.clubs
+    val loading = appVm.clubsLoading
+    val error = appVm.clubsError
 
     val filteredAll = if (query.isBlank()) {
         all
@@ -77,6 +79,14 @@ fun ClubsListScreen(
             }
         }
 
+        if (loading) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+
+        error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error)
+        }
+
         // Переключение вкладок (Избранные / Все)
         TabRow(selectedTabIndex = if (tab == ClubsTab.Favorites) 0 else 1) {
             Tab(
@@ -115,7 +125,7 @@ fun ClubsListScreen(
                         club = club,
                         isFavorite = isFav,
                         onToggleFavorite = { appVm.toggleFavoriteClub(club.id) },
-                        onOpen = { onOpenClub(club.id) }
+                        onOpen = { if (!club.isBlocked) onOpenClub(club.id) }
                     )
                 }
             }
@@ -123,10 +133,7 @@ fun ClubsListScreen(
     }
 }
 
-/**
- * "Карта" заглушка: просто поле + "метки" клубов в виде chip'ов.
- * Позже легко заменить на Google Maps / Яндекс.
- */
+// карта-заглушка с chip'ами клубов — заменить на Google Maps / Яндекс
 @Composable
 private fun ClubsMapStub(
     clubs: List<Club>,
@@ -188,6 +195,13 @@ private fun ClubCard(
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                if (club.isBlocked) {
+                    Text(
+                        text = "Заблокирован${club.blockReason?.let { ": $it" } ?: ""}",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 Text(club.name, style = MaterialTheme.typography.titleMedium)
                 Text(club.location, style = MaterialTheme.typography.labelMedium)
                 Text(club.address, style = MaterialTheme.typography.bodyMedium)

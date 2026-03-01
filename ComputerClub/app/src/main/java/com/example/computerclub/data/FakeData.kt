@@ -39,9 +39,7 @@ object FakeData {
         ProductCategory("service", "Услуги"),
     )
 
-    /**
-     * ✅ Разное меню для каждого клуба
-     */
+    /** Меню для каждого клуба; ключ — clubId. */
     val productsByClubId: Map<String, List<Product>> = mapOf(
         // Cyber Arena — самое большое меню
         "c1" to listOf(
@@ -77,7 +75,7 @@ object FakeData {
         ),
     )
 
-    /** ✅ Товары для выбранного клуба */
+    /** Возвращает меню для clubId; если нет — общий каталог. */
     fun productsForClub(clubId: String): List<Product> =
         productsByClubId[clubId] ?: products
 
