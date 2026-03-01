@@ -25,4 +25,7 @@ interface ClubStaffRepository : JpaRepository<ClubStaffEntity, ClubStaffId> {
     ): Boolean
 
     fun findAllByIdClubId(clubId: Long): List<ClubStaffEntity>
+
+    @Query("select count(cs) > 0 from ClubStaffEntity cs where cs.user.id = :userId")
+    fun existsByUserId(@Param("userId") userId: Long): Boolean
 }

@@ -71,7 +71,7 @@ class ClubAdminManagementService(
 
 data class ClubStaffView(
     val userId: Long,
-    val phone: String,
+    val phone: String?,
     val username: String,
     val role: String
 )

@@ -11,8 +11,8 @@ class UserEntity(
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,
 
-    @Column(nullable = false, unique = true, length = 32)
-    var phone: String,
+    @Column(nullable = true, unique = true, length = 32)
+    var phone: String? = null,
 
     @Column(nullable = false, length = 64)
     var username: String,

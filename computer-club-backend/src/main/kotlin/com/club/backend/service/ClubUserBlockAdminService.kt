@@ -12,7 +12,7 @@ import java.time.LocalDateTime
 
 data class ClubUserBlockView(
     val userId: Long,
-    val phone: String,
+    val phone: String?,
     val username: String,
     val isBlocked: Boolean,
     val reason: String?,

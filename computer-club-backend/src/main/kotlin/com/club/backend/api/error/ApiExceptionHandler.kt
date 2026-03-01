@@ -7,6 +7,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.security.access.AccessDeniedException
+import org.springframework.web.server.ResponseStatusException
 
 data class ApiError(
     val code: String,
@@ -32,6 +33,12 @@ class ApiExceptionHandler {
     fun badRequest(e: IllegalArgumentException) =
         ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
             ApiError("BAD_REQUEST", e.message ?: "Bad request")
+        )
+
+    @ExceptionHandler(ResponseStatusException::class)
+    fun responseStatus(e: ResponseStatusException) =
+        ResponseEntity.status(e.statusCode).body(
+            ApiError(e.statusCode.value().toString(), e.reason ?: "Error")
         )
 
     @ExceptionHandler(Exception::class)
