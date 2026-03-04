@@ -1,10 +1,13 @@
 package com.club.backend.service
 
+import com.club.backend.api.dto.admin.AdminUserResponse
+import com.club.backend.api.dto.admin.CreateUserRequest
 import com.club.backend.domain.entity.*
 import com.club.backend.repository.ClubRepository
 import com.club.backend.repository.ClubStaffRepository
 import com.club.backend.repository.UserRepository
 import jakarta.persistence.EntityNotFoundException
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -15,8 +18,54 @@ data class SetGlobalRoleRequest(val role: String)
 class GlobalAdminService(
     private val userRepository: UserRepository,
     private val clubRepository: ClubRepository,
-    private val clubStaffRepository: ClubStaffRepository
+    private val clubStaffRepository: ClubStaffRepository,
+    private val passwordEncoder: BCryptPasswordEncoder
 ) {
+
+    fun listUsers(): List<AdminUserResponse> =
+        userRepository.findAll().map { it.toDto() }
+
+    @Transactional
+    fun createUser(req: CreateUserRequest): AdminUserResponse {
+        if (userRepository.findByUsername(req.username).isPresent) {
+            throw IllegalStateException("Username already taken")
+        }
+        val role = runCatching { GlobalRole.valueOf(req.globalRole) }.getOrElse { throw IllegalArgumentException("Unknown role") }
+        val user = userRepository.save(
+            UserEntity(
+                username = req.username,
+                passwordHash = passwordEncoder.encode(req.password),
+                globalRole = role
+            )
+        )
+        return user.toDto()
+    }
+
+    @Transactional
+    fun toggleUserActive(userId: Long, isActive: Boolean) {
+        val user = userRepository.findById(userId).orElseThrow { EntityNotFoundException("User not found") }
+        user.isActive = isActive
+        user.updatedAt = LocalDateTime.now()
+        userRepository.save(user)
+    }
+
+    @Transactional
+    fun deleteUser(userId: Long, currentUserId: Long) {
+        if (userId == currentUserId) throw IllegalStateException("Cannot delete yourself")
+        userRepository.findById(userId).orElseThrow { EntityNotFoundException("User not found") }
+        userRepository.deleteById(userId)
+    }
+
+    private fun UserEntity.toDto() = AdminUserResponse(
+        id = id!!,
+        phone = phone,
+        username = username,
+        isActive = isActive,
+        globalRole = globalRole.name,
+        hasPassword = passwordHash != null,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
 
     @Transactional
     fun setGlobalRole(userId: Long, role: String) {

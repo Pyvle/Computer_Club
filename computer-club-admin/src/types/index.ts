@@ -73,3 +73,24 @@ export interface UpdateProductRequest {
   description?: string
   isActive: boolean
 }
+
+export interface AdminUserResponse {
+  id: number
+  phone: string | null
+  username: string
+  isActive: boolean
+  globalRole: GlobalRole
+  hasPassword: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateUserRequest {
+  username: string
+  password: string
+  globalRole?: GlobalRole
+}
+
+export interface SetActiveRequest {
+  isActive: boolean
+}
