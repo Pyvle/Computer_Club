@@ -2,6 +2,8 @@ import { App as AntApp, ConfigProvider } from 'antd'
 import ruRU from 'antd/locale/ru_RU'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import AppLayout from './components/AppLayout'
+import ProtectedRoute from './components/ProtectedRoute'
+import LoginPage from './pages/login/LoginPage'
 import ClubApplicationsPage from './pages/club-applications/ClubApplicationsPage'
 import GlobalCatalogPage from './pages/global-catalog/GlobalCatalogPage'
 import UsersPage from './pages/users/UsersPage'
@@ -16,11 +18,14 @@ export default function App() {
       <AntApp>
         <BrowserRouter>
           <Routes>
-            <Route element={<AppLayout />}>
-              <Route path="/" element={<Navigate to="/club-applications" replace />} />
-              <Route path="/club-applications" element={<ClubApplicationsPage />} />
-              <Route path="/global-catalog" element={<GlobalCatalogPage />} />
-              <Route path="/users" element={<UsersPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route element={<ProtectedRoute />}>
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<Navigate to="/club-applications" replace />} />
+                <Route path="/club-applications" element={<ClubApplicationsPage />} />
+                <Route path="/global-catalog" element={<GlobalCatalogPage />} />
+                <Route path="/users" element={<UsersPage />} />
+              </Route>
             </Route>
           </Routes>
         </BrowserRouter>
