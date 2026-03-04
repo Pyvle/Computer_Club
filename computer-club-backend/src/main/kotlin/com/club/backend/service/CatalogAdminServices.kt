@@ -16,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class GlobalCatalogAdminService(
     private val categoryRepository: ProductCategoryRepository,
-    private val productRepository: ProductRepository
+    private val productRepository: ProductRepository,
+    private val clubProductRepository: ClubProductRepository
 ) {
     fun listCategories(): List<AdminCategoryResponse> =
         categoryRepository.findAllByOrderBySortOrderAscIdAsc().map { it.toDto() }
@@ -30,6 +31,13 @@ class GlobalCatalogAdminService(
                 isActive = true
             )
         ).toDto()
+
+    @Transactional
+    fun deleteCategory(categoryId: Long) {
+        if (productRepository.existsByCategoryId(categoryId))
+            throw IllegalStateException("Нельзя удалить категорию: в ней есть товары")
+        categoryRepository.deleteById(categoryId)
+    }
 
     @Transactional
     fun updateCategory(categoryId: Long, req: UpdateCategoryRequest): AdminCategoryResponse {
@@ -58,6 +66,13 @@ class GlobalCatalogAdminService(
                 isActive = req.isActive
             )
         ).toDto()
+    }
+
+    @Transactional
+    fun deleteProduct(productId: Long) {
+        if (clubProductRepository.existsByIdProductId(productId))
+            throw IllegalStateException("Нельзя удалить товар: он привязан к каталогу клуба")
+        productRepository.deleteById(productId)
     }
 
     @Transactional

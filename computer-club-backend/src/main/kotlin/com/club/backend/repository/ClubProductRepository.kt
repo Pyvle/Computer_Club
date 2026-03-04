@@ -35,4 +35,6 @@ interface ClubProductRepository : JpaRepository<ClubProductEntity, ClubProductId
         """
     )
     fun findAllByClubIdWithProductAndCategory(@Param("clubId") clubId: Long): List<ClubProductEntity>
+
+    fun existsByIdProductId(productId: Long): Boolean
 }

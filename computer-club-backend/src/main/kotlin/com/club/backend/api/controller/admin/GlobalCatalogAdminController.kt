@@ -2,6 +2,7 @@ package com.club.backend.api.controller.admin
 
 import com.club.backend.api.dto.admin.*
 import com.club.backend.service.GlobalCatalogAdminService
+import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.*
 
@@ -25,6 +26,10 @@ class GlobalCatalogAdminController(
         @RequestBody req: UpdateCategoryRequest
     ): AdminCategoryResponse = globalCatalogAdminService.updateCategory(categoryId, req)
 
+    @DeleteMapping("/categories/{categoryId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteCategory(@PathVariable categoryId: Long) = globalCatalogAdminService.deleteCategory(categoryId)
+
     @GetMapping("/products")
     fun listProducts(): List<AdminProductResponse> = globalCatalogAdminService.listProducts()
 
@@ -37,4 +42,8 @@ class GlobalCatalogAdminController(
         @PathVariable productId: Long,
         @RequestBody req: UpdateProductRequest
     ): AdminProductResponse = globalCatalogAdminService.updateProduct(productId, req)
+
+    @DeleteMapping("/products/{productId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteProduct(@PathVariable productId: Long) = globalCatalogAdminService.deleteProduct(productId)
 }
