@@ -6,45 +6,29 @@ import {
   LogoutOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import apiClient from '../utils/apiClient'
-import { getCurrentUser } from '../utils/auth'
+import { useAuth } from '../contexts/AuthContext'
 
 const { Sider, Header, Content } = Layout
 
-const GLOBAL_ADMIN_NAV = [
-  { key: '/club-applications', icon: <FileDoneOutlined />, label: 'Заявки на клубы' },
-  { key: '/global-catalog', icon: <AppstoreOutlined />, label: 'Глобальный каталог' },
-  { key: '/users', icon: <UserOutlined />, label: 'Пользователи' },
+const PLATFORM_NAV = [
+  { key: '/admin/platform/applications', icon: <FileDoneOutlined />, label: 'Заявки на клубы' },
+  { key: '/admin/platform/catalog', icon: <AppstoreOutlined />, label: 'Глобальный каталог' },
+  { key: '/admin/platform/users', icon: <UserOutlined />, label: 'Пользователи' },
 ]
 
-export default function AppLayout() {
+export default function PlatformLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const { message } = App.useApp()
-
-  const user = getCurrentUser()
-  const username = localStorage.getItem('username') ?? '—'
-  const isGlobalAdmin = user?.gr === 'GLOBAL_ADMIN'
-  const navItems = isGlobalAdmin ? GLOBAL_ADMIN_NAV : []
-  const roleLabel = isGlobalAdmin ? 'GLOBAL_ADMIN' : 'Ограниченный доступ'
+  const { user, logout } = useAuth()
 
   async function handleLogout() {
-    const refreshToken = localStorage.getItem('refreshToken')
-    if (refreshToken) {
-      try {
-        await apiClient.post('/admin/auth/logout', { refreshToken })
-      } catch {
-        // продолжаем выход даже при ошибке
-      }
-    }
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
-    localStorage.removeItem('username')
+    logout()
     message.success('Вы вышли из системы')
     navigate('/login')
   }
 
-  const selectedKey = navItems.find((item) => location.pathname.startsWith(item.key))?.key ?? ''
+  const selectedKey = PLATFORM_NAV.find((item) => location.pathname.startsWith(item.key))?.key ?? ''
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -55,14 +39,14 @@ export default function AppLayout() {
           </Typography.Text>
           <br />
           <Typography.Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>
-            {username} · {roleLabel}
+            {user?.phone ?? '—'} · GLOBAL_ADMIN
           </Typography.Text>
         </div>
         <Menu
           theme="dark"
           mode="inline"
           selectedKeys={[selectedKey]}
-          items={navItems}
+          items={PLATFORM_NAV}
           onClick={({ key }) => navigate(key)}
           style={{ marginTop: 8 }}
         />
