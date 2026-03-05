@@ -20,6 +20,7 @@ export default function LoginPage() {
       const { data } = await axios.post('/api/v1/admin/auth/login', values)
       localStorage.setItem('accessToken', data.accessToken)
       localStorage.setItem('refreshToken', data.refreshToken)
+      localStorage.setItem('username', values.username)
       navigate('/', { replace: true })
     } catch {
       message.error('Неверный логин или пароль')

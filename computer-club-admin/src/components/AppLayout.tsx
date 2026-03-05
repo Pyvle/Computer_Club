@@ -7,10 +7,11 @@ import {
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import apiClient from '../utils/apiClient'
+import { getCurrentUser } from '../utils/auth'
 
 const { Sider, Header, Content } = Layout
 
-const NAV_ITEMS = [
+const GLOBAL_ADMIN_NAV = [
   { key: '/club-applications', icon: <FileDoneOutlined />, label: 'Заявки на клубы' },
   { key: '/global-catalog', icon: <AppstoreOutlined />, label: 'Глобальный каталог' },
   { key: '/users', icon: <UserOutlined />, label: 'Пользователи' },
@@ -20,6 +21,12 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const { message } = App.useApp()
+
+  const user = getCurrentUser()
+  const username = localStorage.getItem('username') ?? '—'
+  const isGlobalAdmin = user?.gr === 'GLOBAL_ADMIN'
+  const navItems = isGlobalAdmin ? GLOBAL_ADMIN_NAV : []
+  const roleLabel = isGlobalAdmin ? 'GLOBAL_ADMIN' : 'Ограниченный доступ'
 
   async function handleLogout() {
     const refreshToken = localStorage.getItem('refreshToken')
@@ -32,11 +39,12 @@ export default function AppLayout() {
     }
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
+    localStorage.removeItem('username')
     message.success('Вы вышли из системы')
     navigate('/login')
   }
 
-  const selectedKey = NAV_ITEMS.find((item) => location.pathname.startsWith(item.key))?.key ?? ''
+  const selectedKey = navItems.find((item) => location.pathname.startsWith(item.key))?.key ?? ''
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -47,14 +55,14 @@ export default function AppLayout() {
           </Typography.Text>
           <br />
           <Typography.Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>
-            Панель GLOBAL_ADMIN
+            {username} · {roleLabel}
           </Typography.Text>
         </div>
         <Menu
           theme="dark"
           mode="inline"
           selectedKeys={[selectedKey]}
-          items={NAV_ITEMS}
+          items={navItems}
           onClick={({ key }) => navigate(key)}
           style={{ marginTop: 8 }}
         />
