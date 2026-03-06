@@ -3,6 +3,7 @@ package com.club.backend.api.controller.admin
 import com.club.backend.api.dto.*
 import com.club.backend.domain.entity.ClubApplicationStatus
 import com.club.backend.service.ClubApplicationService
+import jakarta.validation.Valid
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
@@ -42,4 +43,12 @@ class ClubApplicationAdminController(
         @RequestBody req: ClubApplicationDecisionRequest
     ): ClubApplicationResponse =
         clubApplicationService.reject(applicationId, currentUserId(), req)
+
+    @PostMapping("/{applicationId}/request-revision")
+    @PreAuthorize("hasRole('GLOBAL_ADMIN')")
+    fun requestRevision(
+        @PathVariable applicationId: Long,
+        @RequestBody @Valid req: RequestRevisionRequest
+    ): ClubApplicationResponse =
+        clubApplicationService.requestRevision(applicationId, currentUserId(), req)
 }

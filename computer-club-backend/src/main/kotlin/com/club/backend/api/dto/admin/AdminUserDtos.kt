@@ -22,6 +22,7 @@ data class CreateUserRequest(
     @field:NotBlank
     @field:Size(min = 6)
     val password: String,
+    val phone: String? = null,
     val globalRole: String = "USER"
 )
 

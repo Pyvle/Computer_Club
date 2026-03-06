@@ -70,4 +70,4 @@ app:
     resend-cooldown-seconds: 60
     max-requests-per-hour: 5
     limits-enabled: true
-    debug-return-code: false
+    debug-return-code: true

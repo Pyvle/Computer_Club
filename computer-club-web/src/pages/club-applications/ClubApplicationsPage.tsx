@@ -23,18 +23,22 @@ import type {
 } from '../../types'
 
 const STATUS_COLORS: Record<ClubApplicationStatus, string> = {
+  DRAFT: 'default',
   PENDING: 'orange',
+  REVISION_REQUESTED: 'gold',
   APPROVED: 'green',
   REJECTED: 'red',
 }
 
 const STATUS_LABELS: Record<ClubApplicationStatus, string> = {
+  DRAFT: 'Черновик',
   PENDING: 'Ожидает',
+  REVISION_REQUESTED: 'На доработке',
   APPROVED: 'Одобрена',
   REJECTED: 'Отклонена',
 }
 
-type ModalMode = 'approve' | 'reject'
+type ModalMode = 'approve' | 'reject' | 'revision'
 
 interface DecisionForm {
   comment?: string
@@ -98,9 +102,12 @@ export default function ClubApplicationsPage() {
           body,
         )
         message.success(`Заявка одобрена. Создан клуб #${data.createdClubId}`)
-      } else {
+      } else if (modalMode === 'reject') {
         await apiClient.post(`/admin/club-applications/${selectedItem.id}/reject`, body)
         message.success('Заявка отклонена')
+      } else {
+        await apiClient.post(`/admin/club-applications/${selectedItem.id}/request-revision`, { comment: values.comment })
+        message.success('Запрошена доработка')
       }
       closeModal()
       fetchItems(statusFilter)
@@ -139,6 +146,9 @@ export default function ClubApplicationsPage() {
             <Button type="primary" size="small" onClick={() => openModal('approve', record)}>
               Одобрить
             </Button>
+            <Button size="small" onClick={() => openModal('revision', record)}>
+              Доработка
+            </Button>
             <Button danger size="small" onClick={() => openModal('reject', record)}>
               Отклонить
             </Button>
@@ -156,10 +166,12 @@ export default function ClubApplicationsPage() {
         <Select
           value={statusFilter}
           onChange={setStatusFilter}
-          style={{ width: 160 }}
+          style={{ width: 180 }}
           options={[
             { value: 'ALL', label: 'Все' },
+            { value: 'DRAFT', label: 'Черновики' },
             { value: 'PENDING', label: 'Ожидают' },
+            { value: 'REVISION_REQUESTED', label: 'На доработке' },
             { value: 'APPROVED', label: 'Одобренные' },
             { value: 'REJECTED', label: 'Отклонённые' },
           ]}
@@ -203,11 +215,19 @@ export default function ClubApplicationsPage() {
       />
 
       <Modal
-        title={modalMode === 'approve' ? 'Одобрить заявку' : 'Отклонить заявку'}
+        title={
+          modalMode === 'approve' ? 'Одобрить заявку'
+          : modalMode === 'reject' ? 'Отклонить заявку'
+          : 'Запросить доработку'
+        }
         open={modalMode !== null}
         onCancel={closeModal}
         onOk={form.submit}
-        okText={modalMode === 'approve' ? 'Одобрить' : 'Отклонить'}
+        okText={
+          modalMode === 'approve' ? 'Одобрить'
+          : modalMode === 'reject' ? 'Отклонить'
+          : 'Запросить доработку'
+        }
         okButtonProps={{
           danger: modalMode === 'reject',
           loading: submitting,

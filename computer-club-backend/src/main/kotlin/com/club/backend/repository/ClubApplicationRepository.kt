@@ -24,4 +24,8 @@ interface ClubApplicationRepository : JpaRepository<ClubApplicationEntity, Long>
     fun findAllFiltered(@Param("status") status: ClubApplicationStatus?): List<ClubApplicationEntity>
 
     fun findAllByApplicant_Id(applicantUserId: Long): List<ClubApplicationEntity>
+
+    fun findFirstByApplicant_IdAndStatusOrderByUpdatedAtDesc(
+        applicantUserId: Long, status: ClubApplicationStatus
+    ): ClubApplicationEntity?
 }

@@ -37,3 +37,12 @@ data class ApproveClubApplicationResponse(
     val createdClubId: Long,
     val ownerUserId: Long
 )
+
+data class UpdateClubApplicationRequest(
+    val clubName: String,
+    val address: String,
+    val locationText: String? = null,
+    val description: String? = null
+)
+
+data class RequestRevisionRequest(val comment: String? = null)

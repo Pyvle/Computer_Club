@@ -7,10 +7,11 @@ export interface ClubMembership {
   role: string
 }
 
-export interface PendingApplicationBrief {
+export interface ActiveApplicationBrief {
   applicationId: number
   clubName: string
   status: string
+  decisionComment: string | null
 }
 
 export interface UserContext {
@@ -19,7 +20,8 @@ export interface UserContext {
   email: string | null
   globalRole: string
   clubs: ClubMembership[]
-  pendingApplications: PendingApplicationBrief[]
+  hasPassword: boolean
+  activeApplication: ActiveApplicationBrief | null
 }
 
 interface AuthContextValue {
@@ -47,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
+    sessionStorage.removeItem('adminVerified')
     setUser(null)
   }, [])
 

@@ -2,9 +2,7 @@ package com.club.backend.service
 
 import com.club.backend.api.dto.AdminLoginRequest
 import com.club.backend.domain.entity.AuthSessionEntity
-import com.club.backend.domain.entity.GlobalRole
 import com.club.backend.repository.AuthSessionRepository
-import com.club.backend.repository.ClubStaffRepository
 import com.club.backend.repository.UserRepository
 import com.club.backend.security.JwtService
 import org.springframework.beans.factory.annotation.Value
@@ -19,7 +17,6 @@ import java.time.LocalDateTime
 @Service
 class AdminAuthService(
     private val userRepository: UserRepository,
-    private val clubStaffRepository: ClubStaffRepository,
     private val authSessionRepository: AuthSessionRepository,
     private val jwtService: JwtService,
     private val passwordEncoder: BCryptPasswordEncoder,
@@ -28,17 +25,12 @@ class AdminAuthService(
 
     @Transactional
     fun login(request: AdminLoginRequest, userAgent: String?, ip: String?): TokenPair {
+        // поддержка входа и по телефону, и по username
         val user = userRepository.findByPhone(request.phone).orElse(null)
+            ?: userRepository.findByUsername(request.phone).orElse(null)
 
         // единое сообщение при любой ошибке — без подсказок атакующему
         if (user == null || user.passwordHash == null || !user.isActive) {
-            throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials")
-        }
-
-        // проверка доступа к панели: GLOBAL_ADMIN или любой club staff
-        val hasAccess = user.globalRole == GlobalRole.GLOBAL_ADMIN
-            || clubStaffRepository.existsByUserId(user.id!!)
-        if (!hasAccess) {
             throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials")
         }
 
@@ -60,6 +52,26 @@ class AdminAuthService(
         )
 
         return TokenPair(access, refresh)
+    }
+
+    /** Устанавливает пароль пользователю без пароля. Повторная установка запрещена. */
+    @Transactional
+    fun setPassword(userId: Long, password: String) {
+        val user = userRepository.findById(userId)
+            .orElseThrow { ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthorized") }
+        if (user.passwordHash != null) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Password already set")
+        }
+        user.passwordHash = passwordEncoder.encode(password)
+        userRepository.save(user)
+    }
+
+    /** Проверяет пароль пользователя без изменения ролей/токенов. */
+    fun verifyPassword(userId: Long, password: String): Boolean {
+        val user = userRepository.findById(userId)
+            .orElseThrow { ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthorized") }
+        if (user.passwordHash == null) return false
+        return passwordEncoder.matches(password, user.passwordHash)
     }
 
     private fun sha256(value: String): String {

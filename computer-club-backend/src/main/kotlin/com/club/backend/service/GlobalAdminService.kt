@@ -30,10 +30,14 @@ class GlobalAdminService(
         if (userRepository.findByUsername(req.username).isPresent) {
             throw IllegalStateException("Username already taken")
         }
+        if (req.phone != null && userRepository.findByPhone(req.phone).isPresent) {
+            throw IllegalStateException("Phone already taken")
+        }
         val role = runCatching { GlobalRole.valueOf(req.globalRole) }.getOrElse { throw IllegalArgumentException("Unknown role") }
         val user = userRepository.save(
             UserEntity(
                 username = req.username,
+                phone = req.phone,
                 passwordHash = passwordEncoder.encode(req.password),
                 globalRole = role
             )

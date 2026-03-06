@@ -25,7 +25,7 @@ export default function PlatformLayout() {
   async function handleLogout() {
     logout()
     message.success('Вы вышли из системы')
-    navigate('/login')
+    navigate('/')
   }
 
   const selectedKey = PLATFORM_NAV.find((item) => location.pathname.startsWith(item.key))?.key ?? ''

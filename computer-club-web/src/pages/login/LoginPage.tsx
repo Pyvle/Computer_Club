@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, Form, Input, Button, Typography, App } from 'antd'
 import axios from 'axios'
 import { useAuth } from '../../contexts/AuthContext'
@@ -10,25 +10,21 @@ type Mode = 'otp-phone' | 'otp-code' | 'admin'
 
 function resolveRedirect(globalRole: string, clubs: { clubId: number }[]): string {
   if (globalRole === 'GLOBAL_ADMIN') return '/admin/platform/applications'
-  if (clubs.length > 0) return `/admin/club/${clubs[0].clubId}`
-  return '/admin/onboarding'
+  return '/admin/my-clubs'
 }
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { message } = App.useApp()
   const { loadContext } = useAuth()
 
-  const [mode, setMode] = useState<Mode>('otp-phone')
+  const isPartnerMode = searchParams.get('partner') === '1'
+  const [mode, setMode] = useState<Mode>(isPartnerMode ? 'otp-phone' : 'otp-phone')
   const [phone, setPhone] = useState('')
   const [challengeId, setChallengeId] = useState('')
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    if (localStorage.getItem('accessToken')) {
-      navigate('/', { replace: true })
-    }
-  }, [navigate])
 
   // --- OTP: шаг 1 — запрос кода ---
   async function onRequestOtp(values: { phone: string }) {
@@ -73,8 +69,12 @@ export default function LoginPage() {
       localStorage.setItem('refreshToken', data.refreshToken)
       const ctx = await loadContext()
       navigate(resolveRedirect(ctx.globalRole, ctx.clubs), { replace: true })
-    } catch {
-      message.error('Неверный номер телефона или пароль')
+    } catch (e: any) {
+      if (e?.response?.status === 401) {
+        message.error('Неверный номер телефона или пароль')
+      } else {
+        message.error('Не удалось подключиться к серверу')
+      }
     } finally {
       setLoading(false)
     }
@@ -85,7 +85,9 @@ export default function LoginPage() {
       <Card style={{ width: 380 }}>
         {mode === 'otp-phone' && (
           <>
-            <Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>Вход</Title>
+            <Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>
+              {isPartnerMode ? 'Регистрация партнёра' : 'Вход'}
+            </Title>
             <Form layout="vertical" onFinish={onRequestOtp}>
               <Form.Item
                 name="phone"
@@ -100,8 +102,14 @@ export default function LoginPage() {
                 </Button>
               </Form.Item>
             </Form>
-            <div style={{ textAlign: 'center' }}>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Link onClick={() => setMode('admin')}>Войти как администратор</Link>
+              {!isPartnerMode && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Хотите открыть клуб?{' '}
+                  <Link href="/login?partner=1">Стать партнёром</Link>
+                </Text>
+              )}
             </div>
           </>
         )}
@@ -138,10 +146,10 @@ export default function LoginPage() {
             <Form layout="vertical" onFinish={onAdminLogin}>
               <Form.Item
                 name="phone"
-                label="Номер телефона"
-                rules={[{ required: true, message: 'Введите номер телефона' }]}
+                label="Телефон или логин"
+                rules={[{ required: true, message: 'Введите телефон или логин' }]}
               >
-                <Input placeholder="+7XXXXXXXXXX" autoFocus />
+                <Input placeholder="+7XXXXXXXXXX или username" autoFocus />
               </Form.Item>
               <Form.Item
                 name="password"

@@ -6,7 +6,8 @@ data class UserContextResponse(
     val email: String?,
     val globalRole: String,
     val clubs: List<ClubMembership>,
-    val pendingApplications: List<PendingApplicationBrief>
+    val hasPassword: Boolean,
+    val activeApplication: ActiveApplicationBrief?
 )
 
 data class ClubMembership(
@@ -15,8 +16,10 @@ data class ClubMembership(
     val role: String
 )
 
-data class PendingApplicationBrief(
+/** Актуальная (последняя не-APPROVED) заявка пользователя на открытие клуба. */
+data class ActiveApplicationBrief(
     val applicationId: Long,
     val clubName: String,
-    val status: String
+    val status: String,
+    val decisionComment: String?
 )

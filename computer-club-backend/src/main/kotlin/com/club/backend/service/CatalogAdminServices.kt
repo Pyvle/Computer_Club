@@ -139,6 +139,24 @@ class ClubCatalogAdminService(
     }
 
     @Transactional
+    fun unlinkClubProduct(actorUserId: Long, clubId: Long, productId: Long) {
+        val id = ClubProductId(clubId = clubId, productId = productId)
+        val existing = clubProductRepository.findById(id).orElseThrow {
+            EntityNotFoundException("ClubProduct $clubId:$productId not found")
+        }
+        clubProductRepository.delete(existing)
+        auditService.log(
+            actorUserId = actorUserId,
+            clubId = clubId,
+            action = "CLUB_PRODUCT_UNLINK",
+            entityType = "ClubProduct",
+            entityId = "$clubId:$productId",
+            before = mapOf("clubId" to clubId, "productId" to productId, "priceRub" to existing.priceRub),
+            after = null
+        )
+    }
+
+    @Transactional
     fun upsertClubProduct(actorUserId: Long, clubId: Long, productId: Long, req: UpsertClubProductRequest) {
         val club = clubRepository.findById(clubId).orElseThrow { EntityNotFoundException("Club $clubId not found") }
         val product = productRepository.findById(productId).orElseThrow { EntityNotFoundException("Product $productId not found") }

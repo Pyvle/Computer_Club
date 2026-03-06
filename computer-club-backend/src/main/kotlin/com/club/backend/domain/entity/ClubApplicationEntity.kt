@@ -28,7 +28,7 @@ class ClubApplicationEntity(
     var description: String? = null,
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
+    @Column(nullable = false, length = 20)
     var status: ClubApplicationStatus = ClubApplicationStatus.PENDING,
 
     @Column(name = "decision_comment", columnDefinition = "text")
@@ -53,7 +53,9 @@ class ClubApplicationEntity(
 )
 
 enum class ClubApplicationStatus {
+    DRAFT,
     PENDING,
+    REVISION_REQUESTED,
     APPROVED,
     REJECTED
 }

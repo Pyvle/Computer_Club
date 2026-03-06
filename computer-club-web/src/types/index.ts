@@ -1,6 +1,6 @@
 export type GlobalRole = 'USER' | 'GLOBAL_ADMIN'
 
-export type ClubApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+export type ClubApplicationStatus = 'DRAFT' | 'PENDING' | 'REVISION_REQUESTED' | 'APPROVED' | 'REJECTED'
 
 export interface ClubApplicationResponse {
   id: number
@@ -88,9 +88,31 @@ export interface AdminUserResponse {
 export interface CreateUserRequest {
   username: string
   password: string
+  phone?: string
   globalRole?: GlobalRole
 }
 
 export interface SetActiveRequest {
   isActive: boolean
+}
+
+export interface AdminClubCatalogProductResponse {
+  productId: number
+  categoryId: number
+  productTitle: string
+  description: string | null
+  productIsActive: boolean
+  isLinkedToClub: boolean
+  clubPriceRub: number | null
+  clubIsAvailable: boolean | null
+}
+
+export interface AdminClubCatalogResponse {
+  categories: AdminCategoryResponse[]
+  products: AdminClubCatalogProductResponse[]
+}
+
+export interface UpsertClubProductRequest {
+  priceRub: number
+  isAvailable: boolean
 }
