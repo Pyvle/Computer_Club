@@ -25,9 +25,7 @@ class AdminAuthService(
 
     @Transactional
     fun login(request: AdminLoginRequest, userAgent: String?, ip: String?): TokenPair {
-        // поддержка входа и по телефону, и по username
         val user = userRepository.findByPhone(request.phone).orElse(null)
-            ?: userRepository.findByUsername(request.phone).orElse(null)
 
         // единое сообщение при любой ошибке — без подсказок атакующему
         if (user == null || user.passwordHash == null || !user.isActive) {

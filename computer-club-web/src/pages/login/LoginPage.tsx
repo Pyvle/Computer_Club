@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, Form, Input, Button, Typography, App } from 'antd'
 import axios from 'axios'
@@ -6,9 +6,9 @@ import { useAuth } from '../../contexts/AuthContext'
 
 const { Title, Text, Link } = Typography
 
-type Mode = 'otp-phone' | 'otp-code' | 'admin'
+type Mode = 'login' | 'otp-code' | 'admin' | 'register' | 'register-code'
 
-function resolveRedirect(globalRole: string, clubs: { clubId: number }[]): string {
+function resolveRedirect(globalRole: string): string {
   if (globalRole === 'GLOBAL_ADMIN') return '/admin/platform/applications'
   return '/admin/my-clubs'
 }
@@ -20,13 +20,13 @@ export default function LoginPage() {
   const { loadContext } = useAuth()
 
   const isPartnerMode = searchParams.get('partner') === '1'
-  const [mode, setMode] = useState<Mode>(isPartnerMode ? 'otp-phone' : 'otp-phone')
+  const [mode, setMode] = useState<Mode>(isPartnerMode ? 'register' : 'login')
   const [phone, setPhone] = useState('')
+  const [pendingPassword, setPendingPassword] = useState('')
   const [challengeId, setChallengeId] = useState('')
   const [loading, setLoading] = useState(false)
 
-
-  // --- OTP: шаг 1 — запрос кода ---
+  // --- OTP-вход: шаг 1 ---
   async function onRequestOtp(values: { phone: string }) {
     setLoading(true)
     try {
@@ -41,18 +41,15 @@ export default function LoginPage() {
     }
   }
 
-  // --- OTP: шаг 2 — подтверждение кода ---
+  // --- OTP-вход: шаг 2 ---
   async function onVerifyOtp(values: { code: string }) {
     setLoading(true)
     try {
-      const { data } = await axios.post('/api/v1/auth/otp/verify', {
-        challengeId,
-        code: values.code,
-      })
+      const { data } = await axios.post('/api/v1/auth/otp/verify', { challengeId, code: values.code })
       localStorage.setItem('accessToken', data.accessToken)
       localStorage.setItem('refreshToken', data.refreshToken)
       const ctx = await loadContext()
-      navigate(resolveRedirect(ctx.globalRole, ctx.clubs), { replace: true })
+      navigate(resolveRedirect(ctx.globalRole), { replace: true })
     } catch {
       message.error('Неверный или истёкший код')
     } finally {
@@ -60,7 +57,53 @@ export default function LoginPage() {
     }
   }
 
-  // --- Admin: телефон + пароль ---
+  // --- Регистрация партнёра: шаг 1 ---
+  async function onRegisterPhone(values: { phone: string; password: string; confirmPassword: string }) {
+    if (values.password !== values.confirmPassword) {
+      message.error('Пароли не совпадают')
+      return
+    }
+    setLoading(true)
+    try {
+      const { data } = await axios.post('/api/v1/auth/otp/request', { phone: values.phone })
+      setPhone(values.phone)
+      setPendingPassword(values.password)
+      setChallengeId(data.challengeId)
+      setMode('register-code')
+    } catch {
+      message.error('Не удалось отправить код. Проверьте номер телефона.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // --- Регистрация партнёра: шаг 2 ---
+  async function onRegisterCode(values: { code: string }) {
+    setLoading(true)
+    try {
+      const { data } = await axios.post('/api/v1/auth/otp/verify', { challengeId, code: values.code })
+      localStorage.setItem('accessToken', data.accessToken)
+      localStorage.setItem('refreshToken', data.refreshToken)
+      // устанавливаем пароль сразу после верификации
+      await axios.post(
+        '/api/v1/me/set-password',
+        { password: pendingPassword },
+        { headers: { Authorization: `Bearer ${data.accessToken}` } }
+      )
+      const ctx = await loadContext()
+      navigate(resolveRedirect(ctx.globalRole), { replace: true })
+    } catch (e: any) {
+      if (e?.response?.status === 409) {
+        message.error('Аккаунт с этим номером уже зарегистрирован. Войдите с паролем.')
+      } else {
+        message.error('Неверный или истёкший код')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // --- Вход администратора: телефон + пароль ---
   async function onAdminLogin(values: { phone: string; password: string }) {
     setLoading(true)
     try {
@@ -68,7 +111,7 @@ export default function LoginPage() {
       localStorage.setItem('accessToken', data.accessToken)
       localStorage.setItem('refreshToken', data.refreshToken)
       const ctx = await loadContext()
-      navigate(resolveRedirect(ctx.globalRole, ctx.clubs), { replace: true })
+      navigate(resolveRedirect(ctx.globalRole), { replace: true })
     } catch (e: any) {
       if (e?.response?.status === 401) {
         message.error('Неверный номер телефона или пароль')
@@ -82,12 +125,12 @@ export default function LoginPage() {
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f0f2f5' }}>
-      <Card style={{ width: 380 }}>
-        {mode === 'otp-phone' && (
+      <Card style={{ width: 400 }}>
+
+        {/* --- OTP-вход: ввод телефона --- */}
+        {mode === 'login' && (
           <>
-            <Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>
-              {isPartnerMode ? 'Регистрация партнёра' : 'Вход'}
-            </Title>
+            <Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>Вход</Title>
             <Form layout="vertical" onFinish={onRequestOtp}>
               <Form.Item
                 name="phone"
@@ -104,16 +147,15 @@ export default function LoginPage() {
             </Form>
             <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Link onClick={() => setMode('admin')}>Войти как администратор</Link>
-              {!isPartnerMode && (
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Хотите открыть клуб?{' '}
-                  <Link href="/login?partner=1">Стать партнёром</Link>
-                </Text>
-              )}
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Хотите открыть клуб?{' '}
+                <Link href="/login?partner=1">Стать партнёром</Link>
+              </Text>
             </div>
           </>
         )}
 
+        {/* --- OTP-вход: ввод кода --- */}
         {mode === 'otp-code' && (
           <>
             <Title level={3} style={{ textAlign: 'center', marginBottom: 8 }}>Введите код</Title>
@@ -135,21 +177,87 @@ export default function LoginPage() {
               </Form.Item>
             </Form>
             <div style={{ textAlign: 'center' }}>
-              <Link onClick={() => setMode('otp-phone')}>← Изменить номер</Link>
+              <Link onClick={() => setMode('login')}>← Изменить номер</Link>
             </div>
           </>
         )}
 
+        {/* --- Регистрация партнёра: шаг 1 --- */}
+        {mode === 'register' && (
+          <>
+            <Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>Регистрация партнёра</Title>
+            <Form layout="vertical" onFinish={onRegisterPhone}>
+              <Form.Item
+                name="phone"
+                label="Номер телефона"
+                rules={[{ required: true, message: 'Введите номер телефона' }]}
+              >
+                <Input placeholder="+7XXXXXXXXXX" autoFocus />
+              </Form.Item>
+              <Form.Item
+                name="password"
+                label="Пароль"
+                rules={[{ required: true, message: 'Введите пароль' }, { min: 6, message: 'Минимум 6 символов' }]}
+              >
+                <Input.Password placeholder="Придумайте пароль" />
+              </Form.Item>
+              <Form.Item
+                name="confirmPassword"
+                label="Повторите пароль"
+                rules={[{ required: true, message: 'Повторите пароль' }]}
+              >
+                <Input.Password placeholder="Повторите пароль" />
+              </Form.Item>
+              <Form.Item style={{ marginBottom: 12 }}>
+                <Button type="primary" htmlType="submit" block loading={loading}>
+                  Далее
+                </Button>
+              </Form.Item>
+            </Form>
+            <div style={{ textAlign: 'center' }}>
+              <Link href="/login">Уже есть аккаунт? Войти</Link>
+            </div>
+          </>
+        )}
+
+        {/* --- Регистрация партнёра: шаг 2 --- */}
+        {mode === 'register-code' && (
+          <>
+            <Title level={3} style={{ textAlign: 'center', marginBottom: 8 }}>Подтвердите номер</Title>
+            <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginBottom: 24 }}>
+              Код отправлен на {phone}
+            </Text>
+            <Form layout="vertical" onFinish={onRegisterCode}>
+              <Form.Item
+                name="code"
+                label="Код из SMS"
+                rules={[{ required: true, message: 'Введите код' }]}
+              >
+                <Input maxLength={6} autoFocus style={{ letterSpacing: 4, fontSize: 20, textAlign: 'center' }} />
+              </Form.Item>
+              <Form.Item style={{ marginBottom: 12 }}>
+                <Button type="primary" htmlType="submit" block loading={loading}>
+                  Подтвердить
+                </Button>
+              </Form.Item>
+            </Form>
+            <div style={{ textAlign: 'center' }}>
+              <Link onClick={() => setMode('register')}>← Изменить данные</Link>
+            </div>
+          </>
+        )}
+
+        {/* --- Вход администратора --- */}
         {mode === 'admin' && (
           <>
             <Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>Вход для администратора</Title>
             <Form layout="vertical" onFinish={onAdminLogin}>
               <Form.Item
                 name="phone"
-                label="Телефон или логин"
-                rules={[{ required: true, message: 'Введите телефон или логин' }]}
+                label="Номер телефона"
+                rules={[{ required: true, message: 'Введите номер телефона' }]}
               >
-                <Input placeholder="+7XXXXXXXXXX или username" autoFocus />
+                <Input placeholder="+7XXXXXXXXXX" autoFocus />
               </Form.Item>
               <Form.Item
                 name="password"
@@ -165,10 +273,11 @@ export default function LoginPage() {
               </Form.Item>
             </Form>
             <div style={{ textAlign: 'center' }}>
-              <Link onClick={() => setMode('otp-phone')}>← Обычный вход</Link>
+              <Link onClick={() => setMode('login')}>← Обычный вход</Link>
             </div>
           </>
         )}
+
       </Card>
     </div>
   )

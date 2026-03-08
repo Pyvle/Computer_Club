@@ -7,7 +7,6 @@ import java.time.LocalDateTime
 data class AdminUserResponse(
     val id: Long,
     val phone: String?,
-    val username: String,
     val isActive: Boolean,
     val globalRole: String,
     val hasPassword: Boolean,
@@ -16,13 +15,10 @@ data class AdminUserResponse(
 )
 
 data class CreateUserRequest(
-    @field:NotBlank
-    @field:Size(min = 3)
-    val username: String,
+    @field:NotBlank val phone: String,
     @field:NotBlank
     @field:Size(min = 6)
     val password: String,
-    val phone: String? = null,
     val globalRole: String = "USER"
 )
 

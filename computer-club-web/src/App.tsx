@@ -11,6 +11,9 @@ import HomePage from './pages/home/HomePage'
 import AdminRedirect from './pages/admin/AdminRedirect'
 import MyClubsPage from './pages/my-clubs/MyClubsPage'
 import ClubCatalogPage from './pages/club-catalog/ClubCatalogPage'
+import ClubSeatsPage from './pages/club-seats/ClubSeatsPage'
+import ClubFloorplansPage from './pages/club-floorplans/ClubFloorplansPage'
+import ClubStaffPage from './pages/club-staff/ClubStaffPage'
 import ClubApplicationsPage from './pages/club-applications/ClubApplicationsPage'
 import GlobalCatalogPage from './pages/global-catalog/GlobalCatalogPage'
 import UsersPage from './pages/users/UsersPage'
@@ -47,6 +50,9 @@ export default function App() {
                 <Route element={<OwnerLayout />}>
                   <Route path="/admin/my-clubs" element={<MyClubsPage />} />
                   <Route path="/admin/club/:clubId/catalog" element={<ClubCatalogPage />} />
+                  <Route path="/admin/club/:clubId/seats" element={<ClubSeatsPage />} />
+                  <Route path="/admin/club/:clubId/floorplans" element={<ClubFloorplansPage />} />
+                  <Route path="/admin/club/:clubId/staff" element={<ClubStaffPage />} />
                   <Route path="/admin/club/:clubId/*" element={<Placeholder name="Панель клуба" />} />
                 </Route>
               </Route>

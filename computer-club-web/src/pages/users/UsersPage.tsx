@@ -131,7 +131,7 @@ export default function UsersPage() {
 
   const adminColumns: ColumnsType<AdminUserResponse> = [
     { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: 'Username', dataIndex: 'username' },
+    { title: 'Телефон', dataIndex: 'phone', render: (v: string | null) => v ?? '—' },
     {
       title: 'Роль',
       dataIndex: 'globalRole',
@@ -179,7 +179,6 @@ export default function UsersPage() {
   const appUserColumns: ColumnsType<AdminUserResponse> = [
     { title: 'ID', dataIndex: 'id', width: 70 },
     { title: 'Телефон', dataIndex: 'phone', render: (v: string | null) => v ?? '—' },
-    { title: 'Username', dataIndex: 'username' },
     {
       title: 'Активен',
       dataIndex: 'isActive',
@@ -253,14 +252,13 @@ export default function UsersPage() {
       >
         <Form form={createForm} layout="vertical" onFinish={handleCreate} style={{ marginTop: 16 }}>
           <Form.Item
-            name="username"
-            label="Username"
+            name="phone"
+            label="Номер телефона"
             rules={[
-              { required: true, message: 'Введите username' },
-              { min: 3, message: 'Минимум 3 символа' },
+              { required: true, message: 'Введите номер телефона' },
             ]}
           >
-            <Input autoComplete="off" />
+            <Input placeholder="+7XXXXXXXXXX" autoComplete="off" />
           </Form.Item>
           <Form.Item
             name="password"
@@ -286,7 +284,7 @@ export default function UsersPage() {
       {/* Модал смены роли */}
       <Modal
         open={roleModalOpen}
-        title={`Роль: ${roleTarget?.username}`}
+        title={`Роль: ${roleTarget?.phone ?? `ID ${roleTarget?.id}`}`}
         onCancel={() => setRoleModalOpen(false)}
         onOk={() => roleForm.submit()}
         okText="Сохранить"

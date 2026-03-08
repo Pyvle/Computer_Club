@@ -27,16 +27,12 @@ class GlobalAdminService(
 
     @Transactional
     fun createUser(req: CreateUserRequest): AdminUserResponse {
-        if (userRepository.findByUsername(req.username).isPresent) {
-            throw IllegalStateException("Username already taken")
-        }
-        if (req.phone != null && userRepository.findByPhone(req.phone).isPresent) {
-            throw IllegalStateException("Phone already taken")
+        if (userRepository.findByPhone(req.phone).isPresent) {
+            throw IllegalStateException("Пользователь с таким номером уже существует")
         }
         val role = runCatching { GlobalRole.valueOf(req.globalRole) }.getOrElse { throw IllegalArgumentException("Unknown role") }
         val user = userRepository.save(
             UserEntity(
-                username = req.username,
                 phone = req.phone,
                 passwordHash = passwordEncoder.encode(req.password),
                 globalRole = role
@@ -63,7 +59,6 @@ class GlobalAdminService(
     private fun UserEntity.toDto() = AdminUserResponse(
         id = id!!,
         phone = phone,
-        username = username,
         isActive = isActive,
         globalRole = globalRole.name,
         hasPassword = passwordHash != null,

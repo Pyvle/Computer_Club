@@ -23,22 +23,22 @@ class AdminDataSeeder(
 
     @Transactional
     override fun run(args: ApplicationArguments) {
-        val existing = userRepository.findByUsername("admin").orElse(null)
+        val existing = userRepository.findFirstByGlobalRole(GlobalRole.GLOBAL_ADMIN).orElse(null)
         when {
             existing == null -> {
                 userRepository.save(
                     UserEntity(
-                        username = "admin",
+                        phone = "+70000000000",
                         passwordHash = passwordEncoder.encode("Admin1234!"),
                         globalRole = GlobalRole.GLOBAL_ADMIN
                     )
                 )
-                log.info("Created initial GLOBAL_ADMIN account (username: admin)")
+                log.info("Created initial GLOBAL_ADMIN account (phone: +70000000000)")
             }
             existing.passwordHash == null -> {
                 existing.passwordHash = passwordEncoder.encode("Admin1234!")
                 userRepository.save(existing)
-                log.info("Set missing password for GLOBAL_ADMIN account (username: admin)")
+                log.info("Set missing password for GLOBAL_ADMIN account")
             }
         }
     }

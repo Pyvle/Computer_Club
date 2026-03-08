@@ -26,4 +26,9 @@ class ClubAdminsController(
     fun remove(@PathVariable clubId: Long, @PathVariable userId: Long) {
         clubAdminManagementService.removeAdmin(clubId, userId)
     }
+
+    @GetMapping("/users/by-phone")
+    @PreAuthorize("@rbac.canManageClubAdmins(authentication, #clubId)")
+    fun lookupByPhone(@PathVariable clubId: Long, @RequestParam phone: String): ClubStaffView =
+        clubAdminManagementService.lookupByPhone(phone)
 }

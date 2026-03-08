@@ -11,8 +11,9 @@ import {
   HomeOutlined,
   LogoutOutlined,
 } from '@ant-design/icons'
-import { Navigate, Outlet, useNavigate, useLocation, useParams } from 'react-router-dom'
+import { Outlet, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import SetPasswordModal from './SetPasswordModal'
 
 const { Sider, Header, Content } = Layout
 
@@ -34,10 +35,7 @@ export default function OwnerLayout() {
   const { message } = App.useApp()
   const { user, logout } = useAuth()
 
-  // только зарегистрированные партнёры (с паролем) имеют доступ
-  if (user && !user.hasPassword) {
-    return <Navigate to="/" replace />
-  }
+  const needsPassword = !!user && !user.hasPassword
 
   const clubs = user?.clubs ?? []
   const activeClubId = clubId ? Number(clubId) : (clubs[0]?.clubId ?? null)
@@ -132,6 +130,8 @@ export default function OwnerLayout() {
           <Outlet />
         </Content>
       </Layout>
+      {/* пользователь с ролью ADMIN/OWNER без пароля должен установить пароль для доступа к панели */}
+      <SetPasswordModal open={needsPassword} onClose={() => {}} />
     </Layout>
   )
 }

@@ -34,8 +34,7 @@ class MeController(
         }
         return MeResponse(
             id = user.id!!,
-            phone = user.phone,
-            username = user.username
+            phone = user.phone
         )
     }
 

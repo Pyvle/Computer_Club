@@ -25,7 +25,6 @@ class ClubAdminManagementService(
                 ClubStaffView(
                     userId = it.user.id!!,
                     phone = it.user.phone,
-                    username = it.user.username,
                     role = it.role.name
                 )
             }
@@ -57,7 +56,20 @@ class ClubAdminManagementService(
             clubStaffRepository.save(existing)
         }
 
-        return ClubStaffView(userId = user.id!!, phone = user.phone, username = user.username, role = saved.role.name)
+        return ClubStaffView(userId = user.id!!, phone = user.phone, role = saved.role.name)
+    }
+
+    @Transactional(readOnly = true)
+    fun lookupByPhone(phone: String): ClubStaffView {
+        val normalized = normalizePhone(phone)
+        val user = userRepository.findByPhone(normalized)
+            .orElseThrow { EntityNotFoundException("Пользователь с таким номером не найден") }
+        return ClubStaffView(userId = user.id!!, phone = user.phone, role = user.globalRole.name)
+    }
+
+    private fun normalizePhone(raw: String): String {
+        val p = raw.trim().replace(" ", "").replace("-", "")
+        return if (p.startsWith("+")) p else "+$p"
     }
 
     @Transactional
@@ -72,6 +84,5 @@ class ClubAdminManagementService(
 data class ClubStaffView(
     val userId: Long,
     val phone: String?,
-    val username: String,
     val role: String
 )

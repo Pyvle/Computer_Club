@@ -94,7 +94,7 @@ class AuthService(
         otpChallengeRepository.save(ch)
 
         val user = userRepository.findByPhone(ch.phone).orElseGet {
-            userRepository.save(UserEntity(phone = ch.phone, username = "user_${ch.phone.takeLast(4)}"))
+            userRepository.save(UserEntity(phone = ch.phone))
         }
 
         require(user.isActive) { "User is blocked" }

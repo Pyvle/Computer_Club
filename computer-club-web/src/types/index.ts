@@ -77,7 +77,6 @@ export interface UpdateProductRequest {
 export interface AdminUserResponse {
   id: number
   phone: string | null
-  username: string
   isActive: boolean
   globalRole: GlobalRole
   hasPassword: boolean
@@ -86,9 +85,8 @@ export interface AdminUserResponse {
 }
 
 export interface CreateUserRequest {
-  username: string
+  phone: string
   password: string
-  phone?: string
   globalRole?: GlobalRole
 }
 
@@ -115,4 +113,97 @@ export interface AdminClubCatalogResponse {
 export interface UpsertClubProductRequest {
   priceRub: number
   isAvailable: boolean
+}
+
+export interface AdminSeatResponse {
+  id: number
+  label: string
+  type: 'REGULAR' | 'VIP'
+  isActive: boolean
+  sortOrder: number
+}
+
+export interface CreateSeatRequest {
+  label: string
+  type: 'REGULAR' | 'VIP'
+  sortOrder?: number
+}
+
+export interface UpdateSeatRequest {
+  label: string
+  type: 'REGULAR' | 'VIP'
+  sortOrder?: number
+  isActive?: boolean
+}
+
+export type FloorplanStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+
+export interface FloorplanSummaryResponse {
+  id: number
+  clubId: number
+  name: string
+  status: FloorplanStatus
+  version: number
+  updatedAt: string
+}
+
+export interface FloorplanResponse {
+  id: number
+  clubId: number
+  name: string
+  width: number
+  height: number
+  gridSize: number
+  status: FloorplanStatus
+  version: number
+  data: unknown
+  updatedAt: string
+}
+
+export interface CreateFloorplanRequest {
+  name: string
+  width: number
+  height: number
+  gridSize?: number
+}
+
+export interface UpdateFloorplanRequest {
+  name: string
+  width: number
+  height: number
+  gridSize: number
+  version: number
+  data: unknown
+}
+
+export interface CloneFloorplanRequest {
+  name: string
+}
+
+export interface UserLookupResult {
+  userId: number
+  phone: string | null
+  role: string   // globalRole: "USER" | "GLOBAL_ADMIN"
+}
+
+export type ClubRole = 'OWNER' | 'ADMIN'
+
+export interface ClubStaffView {
+  userId: number
+  phone: string | null
+  role: ClubRole
+}
+
+export interface PermissionOverrideView {
+  permission: string
+  granted: boolean
+}
+
+export interface ClubStaffPermissionsResponse {
+  clubId: number
+  userId: number
+  role: ClubRole | null
+  rolePermissions: string[]
+  overrides: PermissionOverrideView[]
+  effectivePermissions: string[]
 }

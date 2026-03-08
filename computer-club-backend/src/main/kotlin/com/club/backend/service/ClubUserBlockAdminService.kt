@@ -13,7 +13,6 @@ import java.time.LocalDateTime
 data class ClubUserBlockView(
     val userId: Long,
     val phone: String?,
-    val username: String,
     val isBlocked: Boolean,
     val reason: String?,
     val blockedUntil: LocalDateTime?
@@ -40,7 +39,6 @@ class ClubUserBlockAdminService(
             ClubUserBlockView(
                 userId = it.user.id!!,
                 phone = it.user.phone,
-                username = it.user.username,
                 isBlocked = it.isBlocked,
                 reason = it.reason,
                 blockedUntil = it.blockedUntil
@@ -90,7 +88,6 @@ class ClubUserBlockAdminService(
         return ClubUserBlockView(
             userId = user.id!!,
             phone = user.phone,
-            username = user.username,
             isBlocked = saved.isBlocked,
             reason = saved.reason,
             blockedUntil = saved.blockedUntil

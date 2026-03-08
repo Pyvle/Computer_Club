@@ -14,9 +14,6 @@ class UserEntity(
     @Column(nullable = true, unique = true, length = 32)
     var phone: String? = null,
 
-    @Column(nullable = false, length = 64)
-    var username: String,
-
     @Column(name = "password_hash", length = 255)
     var passwordHash: String? = null,
 
