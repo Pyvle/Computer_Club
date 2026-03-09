@@ -217,6 +217,20 @@ export type PaymentMethod = 'CARD'
 export type SeatType = 'REGULAR' | 'VIP'
 export type PaymentStatus = 'CREATED' | 'PAID' | 'FAILED' | 'CANCELED' | 'REFUND'
 
+export interface AdminBookingResponse {
+  id: number
+  userId: number
+  clubId: number
+  userPhone: string | null
+  status: BookingStatus
+  startAt: string
+  endAt: string
+  durationHours: number
+  totalRub: number
+  seatLabels: string[]
+  purchaseId: number | null
+}
+
 export interface AdminPurchaseResponse {
   id: number
   userId: number

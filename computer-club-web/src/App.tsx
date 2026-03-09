@@ -14,6 +14,7 @@ import ClubCatalogPage from './pages/club-catalog/ClubCatalogPage'
 import ClubSeatsPage from './pages/club-seats/ClubSeatsPage'
 import ClubFloorplansPage from './pages/club-floorplans/ClubFloorplansPage'
 import ClubStaffPage from './pages/club-staff/ClubStaffPage'
+import ClubBookingsPage from './pages/club-bookings/ClubBookingsPage'
 import ClubPurchasesPage from './pages/club-purchases/ClubPurchasesPage'
 import ClubPurchaseDetailPage from './pages/club-purchase-detail/ClubPurchaseDetailPage'
 import ClubApplicationsPage from './pages/club-applications/ClubApplicationsPage'
@@ -55,6 +56,7 @@ export default function App() {
                   <Route path="/admin/club/:clubId/seats" element={<ClubSeatsPage />} />
                   <Route path="/admin/club/:clubId/floorplans" element={<ClubFloorplansPage />} />
                   <Route path="/admin/club/:clubId/staff" element={<ClubStaffPage />} />
+                  <Route path="/admin/club/:clubId/bookings" element={<ClubBookingsPage />} />
                   <Route path="/admin/club/:clubId/purchases" element={<ClubPurchasesPage />} />
                   <Route path="/admin/club/:clubId/purchases/:purchaseId" element={<ClubPurchaseDetailPage />} />
                   <Route path="/admin/club/:clubId/*" element={<Placeholder name="Панель клуба" />} />

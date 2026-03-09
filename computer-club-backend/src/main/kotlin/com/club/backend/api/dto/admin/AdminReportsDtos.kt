@@ -10,10 +10,14 @@ data class AdminBookingResponse(
     val id: Long,
     val userId: Long,
     val clubId: Long,
+    val userPhone: String?,
     val status: BookingStatus,
     val startAt: String,
     val endAt: String,
-    val seatIds: List<Long>
+    val durationHours: Double,
+    val totalRub: Int,
+    val seatLabels: List<String>,
+    val purchaseId: Long?
 )
 
 data class AdminPurchaseResponse(

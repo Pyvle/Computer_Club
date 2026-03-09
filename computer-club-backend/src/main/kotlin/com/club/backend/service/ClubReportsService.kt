@@ -32,6 +32,7 @@ class ClubReportsService(
     // ISO formatter — тот же формат что и в ClubAdminManagementService
     private val isoFmt = DateTimeFormatter.ISO_LOCAL_DATE_TIME
 
+    @Transactional(readOnly = true)
     fun bookings(clubId: Long, from: LocalDateTime?, to: LocalDateTime?, status: BookingStatus?): List<AdminBookingResponse> =
         bookingRepository.findForAdmin(clubId, from, to, status).map { it.toDto() }
 
@@ -135,15 +136,22 @@ class ClubReportsService(
         )
     }
 
-    private fun BookingEntity.toDto() = AdminBookingResponse(
-        id = requireNotNull(id),
-        userId = user.id!!,
-        clubId = club.id!!,
-        status = status,
-        startAt = startAt.toString(),
-        endAt = endAt.toString(),
-        seatIds = seats.map { it.seat.id!! }
-    )
+    private fun BookingEntity.toDto(): AdminBookingResponse {
+        val minutes = ChronoUnit.MINUTES.between(startAt, endAt)
+        return AdminBookingResponse(
+            id = requireNotNull(id),
+            userId = user.id!!,
+            clubId = club.id!!,
+            userPhone = user.phone,
+            status = status,
+            startAt = isoFmt.format(startAt),
+            endAt = isoFmt.format(endAt),
+            durationHours = minutes / 60.0,
+            totalRub = totalRubSnapshot,
+            seatLabels = seats.map { it.seat.label },
+            purchaseId = purchase?.id
+        )
+    }
 
     private fun PurchaseEntity.toDtoSimple() = AdminPurchaseResponse(
         id = requireNotNull(id),

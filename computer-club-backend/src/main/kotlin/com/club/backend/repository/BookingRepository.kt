@@ -35,6 +35,7 @@ interface BookingRepository : JpaRepository<BookingEntity, Long> {
         """
         select distinct b
         from BookingEntity b
+        left join fetch b.user u
         left join fetch b.seats bs
         left join fetch bs.seat s
         where b.club.id = :clubId
