@@ -3,6 +3,7 @@ package com.club.backend.api.controller.admin
 import com.club.backend.service.ClubAdminManagementService
 import com.club.backend.service.ClubStaffView
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.*
 
 @RestController
@@ -18,8 +19,12 @@ class ClubAdminsController(
 
     @PutMapping("/{userId}")
     @PreAuthorize("@rbac.canManageClubAdmins(authentication, #clubId)")
-    fun add(@PathVariable clubId: Long, @PathVariable userId: Long): ClubStaffView =
-        clubAdminManagementService.upsertAdmin(clubId, userId)
+    fun add(
+        @PathVariable clubId: Long,
+        @PathVariable userId: Long,
+        authentication: Authentication
+    ): ClubStaffView =
+        clubAdminManagementService.upsertAdmin(clubId, userId, authentication.name.toLong())
 
     @DeleteMapping("/{userId}")
     @PreAuthorize("@rbac.canManageClubAdmins(authentication, #clubId)")

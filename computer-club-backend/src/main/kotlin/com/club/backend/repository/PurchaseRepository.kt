@@ -15,6 +15,7 @@ interface PurchaseRepository : JpaRepository<PurchaseEntity, Long> {
         """
         select p
         from PurchaseEntity p
+        join fetch p.user u
         where p.club.id = :clubId
           and (:from is null or p.createdAt >= :from)
           and (:to is null or p.createdAt <= :to)
@@ -28,4 +29,15 @@ interface PurchaseRepository : JpaRepository<PurchaseEntity, Long> {
         @Param("to") to: LocalDateTime?,
         @Param("status") status: PaymentStatus?
     ): List<PurchaseEntity>
+
+    /** Загружает покупку конкретного клуба с user и club; нет — возвращает null. */
+    @Query("""
+        select p
+        from PurchaseEntity p
+        join fetch p.user
+        join fetch p.club
+        where p.id = :id
+          and p.club.id = :clubId
+    """)
+    fun findByIdAndClubIdFetch(@Param("id") id: Long, @Param("clubId") clubId: Long): PurchaseEntity?
 }

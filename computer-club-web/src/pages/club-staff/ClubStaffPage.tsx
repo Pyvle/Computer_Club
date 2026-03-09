@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   Table, Button, Tag, Popconfirm, Modal, Form, Input,
-  Select, Typography, Space, Divider, message,
+  Select, Typography, Space, Divider, message, Alert, Tooltip,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import apiClient from '../../utils/apiClient'
+import { useAuth } from '../../contexts/AuthContext'
 import type { ClubStaffView, ClubStaffPermissionsResponse, UserLookupResult } from '../../types'
 
 const { Text } = Typography
@@ -36,12 +37,13 @@ interface PermissionsModalProps {
   clubId: number
   userId: number
   phone: string | null
+  currentUserId: number | null
   open: boolean
   onClose: () => void
   onChanged: () => void
 }
 
-function PermissionsModal({ clubId, userId, phone, open, onClose, onChanged }: PermissionsModalProps) {
+function PermissionsModal({ clubId, userId, phone, currentUserId, open, onClose, onChanged }: PermissionsModalProps) {
   const [data, setData] = useState<ClubStaffPermissionsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState<string | null>(null)
@@ -63,6 +65,8 @@ function PermissionsModal({ clubId, userId, phone, open, onClose, onChanged }: P
   useEffect(() => {
     if (open) fetchPermissions()
   }, [open, fetchPermissions])
+
+  const isSelf = currentUserId !== null && userId === currentUserId
 
   async function handleChange(permission: string, value: PermissionState) {
     setSaving(permission)
@@ -94,6 +98,14 @@ function PermissionsModal({ clubId, userId, phone, open, onClose, onChanged }: P
       {loading && <Text type="secondary">Загрузка...</Text>}
       {data && (
         <>
+          {isSelf && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="Вы редактируете собственные права. Запрет «Управление персоналом» заблокирует вам доступ к этому экрану."
+            />
+          )}
           <Table
             dataSource={ALL_PERMISSIONS.map(p => ({ key: p, permission: p }))}
             pagination={false}
@@ -108,21 +120,28 @@ function PermissionsModal({ clubId, userId, phone, open, onClose, onChanged }: P
                 title: 'Статус',
                 dataIndex: 'permission',
                 width: 200,
-                render: (p: string) => (
-                  <Select
-                    value={getPermissionState(p, data.overrides)}
-                    size="small"
-                    style={{ width: 180 }}
-                    loading={saving === p}
-                    disabled={saving !== null}
-                    onChange={(val: PermissionState) => handleChange(p, val)}
-                    options={[
-                      { value: 'role', label: 'По роли' },
-                      { value: 'granted', label: 'Разрешено' },
-                      { value: 'denied', label: 'Запрещено' },
-                    ]}
-                  />
-                ),
+                render: (p: string) => {
+                  // запрещаем самому себе снять CLUB_ADMINS_MANAGE — это заблокирует доступ
+                  const selfLockout = isSelf && p === 'CLUB_ADMINS_MANAGE'
+                  const select = (
+                    <Select
+                      value={getPermissionState(p, data.overrides)}
+                      size="small"
+                      style={{ width: 180 }}
+                      loading={saving === p}
+                      disabled={saving !== null || selfLockout}
+                      onChange={(val: PermissionState) => handleChange(p, val)}
+                      options={[
+                        { value: 'role', label: 'По роли' },
+                        { value: 'granted', label: 'Разрешено' },
+                        { value: 'denied', label: 'Запрещено' },
+                      ]}
+                    />
+                  )
+                  return selfLockout
+                    ? <Tooltip title="Нельзя снять у себя право на управление персоналом">{select}</Tooltip>
+                    : select
+                },
               },
             ]}
           />
@@ -142,9 +161,13 @@ function PermissionsModal({ clubId, userId, phone, open, onClose, onChanged }: P
 export default function ClubStaffPage() {
   const { clubId } = useParams<{ clubId: string }>()
   const id = Number(clubId)
+  const { user } = useAuth()
 
   const [staff, setStaff] = useState<ClubStaffView[]>([])
   const [loadingStaff, setLoadingStaff] = useState(false)
+  const [canManage, setCanManage] = useState(false)
+  const [phoneFilter, setPhoneFilter] = useState('')
+  const [roleFilter, setRoleFilter] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [foundUser, setFoundUser] = useState<UserLookupResult | null>(null)
   const [lookupLoading, setLookupLoading] = useState(false)
@@ -152,6 +175,20 @@ export default function ClubStaffPage() {
   const [form] = Form.useForm<{ phone: string }>()
 
   const [permModal, setPermModal] = useState<{ userId: number; phone: string | null } | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+    const myClub = user.clubs.find(c => c.clubId === id)
+    if (myClub?.role === 'OWNER' || user.globalRole === 'GLOBAL_ADMIN') {
+      setCanManage(true)
+      return
+    }
+    // для ADMIN — проверяем эффективные права
+    apiClient
+      .get<ClubStaffPermissionsResponse>(`/admin/clubs/${id}/staff/${user.userId}/permissions`)
+      .then(res => setCanManage(res.data.effectivePermissions.includes('CLUB_ADMINS_MANAGE')))
+      .catch(() => setCanManage(false))
+  }, [id, user])
 
   const fetchStaff = useCallback(async () => {
     setLoadingStaff(true)
@@ -218,6 +255,12 @@ export default function ClubStaffPage() {
     }
   }
 
+  const filteredStaff = staff.filter(s => {
+    const matchPhone = !phoneFilter || (s.phone ?? '').includes(phoneFilter.trim())
+    const matchRole = !roleFilter || s.role === roleFilter
+    return matchPhone && matchRole
+  })
+
   const columns: ColumnsType<ClubStaffView> = [
     { title: 'ID', dataIndex: 'userId', width: 70 },
     {
@@ -234,27 +277,56 @@ export default function ClubStaffPage() {
       ),
     },
     {
+      title: 'Добавлен',
+      dataIndex: 'addedAt',
+      width: 160,
+      render: (v: string | null) => {
+        if (!v) return '—'
+        const d = new Date(v)
+        return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      },
+    },
+    {
+      title: 'Кем добавлен',
+      width: 160,
+      render: (_: unknown, record: ClubStaffView) => {
+        if (!record.addedByUserId) return '—'
+        return record.addedByPhone ?? `ID ${record.addedByUserId}`
+      },
+    },
+    {
       title: 'Действия',
-      width: 180,
+      width: 220,
       render: (_: unknown, record: ClubStaffView) => {
         if (record.role === 'OWNER') return null
+        const isSelf = user?.userId === record.userId
         return (
           <Space>
-            <Button
-              size="small"
-              onClick={() => setPermModal({ userId: record.userId, phone: record.phone })}
-            >
-              Права
-            </Button>
-            <Popconfirm
-              title="Удалить администратора?"
-              okText="Удалить"
-              cancelText="Отмена"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => handleDelete(record.userId)}
-            >
-              <Button size="small" danger>Удалить</Button>
-            </Popconfirm>
+            {canManage && (
+              <Button
+                size="small"
+                onClick={() => setPermModal({ userId: record.userId, phone: record.phone })}
+              >
+                Права
+              </Button>
+            )}
+            {canManage && (
+              isSelf ? (
+                <Tooltip title="Нельзя удалить самого себя">
+                  <Button size="small" danger disabled>Удалить</Button>
+                </Tooltip>
+              ) : (
+                <Popconfirm
+                  title="Удалить администратора?"
+                  okText="Удалить"
+                  cancelText="Отмена"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => handleDelete(record.userId)}
+                >
+                  <Button size="small" danger>Удалить</Button>
+                </Popconfirm>
+              )
+            )}
           </Space>
         )
       },
@@ -265,12 +337,35 @@ export default function ClubStaffPage() {
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>Персонал клуба</Typography.Title>
-        <Button type="primary" onClick={() => setAddOpen(true)}>Добавить админа</Button>
+        {canManage && (
+          <Button type="primary" onClick={() => setAddOpen(true)}>Добавить админа</Button>
+        )}
       </div>
+
+      <Space style={{ marginBottom: 16 }}>
+        <Input.Search
+          placeholder="Поиск по телефону"
+          allowClear
+          style={{ width: 220 }}
+          value={phoneFilter}
+          onChange={e => setPhoneFilter(e.target.value)}
+        />
+        <Select
+          placeholder="Роль"
+          allowClear
+          style={{ width: 140 }}
+          value={roleFilter}
+          onChange={v => setRoleFilter(v ?? null)}
+          options={[
+            { value: 'OWNER', label: 'OWNER' },
+            { value: 'ADMIN', label: 'ADMIN' },
+          ]}
+        />
+      </Space>
 
       <Table
         rowKey="userId"
-        dataSource={staff}
+        dataSource={filteredStaff}
         columns={columns}
         loading={loadingStaff}
         pagination={false}
@@ -317,6 +412,7 @@ export default function ClubStaffPage() {
           clubId={id}
           userId={permModal.userId}
           phone={permModal.phone}
+          currentUserId={user?.userId ?? null}
           open={true}
           onClose={() => setPermModal(null)}
           onChanged={fetchStaff}

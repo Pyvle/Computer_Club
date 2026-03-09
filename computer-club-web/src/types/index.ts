@@ -192,6 +192,9 @@ export interface ClubStaffView {
   userId: number
   phone: string | null
   role: ClubRole
+  addedAt: string | null
+  addedByUserId: number | null
+  addedByPhone: string | null
 }
 
 export interface PermissionOverrideView {
@@ -206,4 +209,70 @@ export interface ClubStaffPermissionsResponse {
   rolePermissions: string[]
   overrides: PermissionOverrideView[]
   effectivePermissions: string[]
+}
+
+export type BookingStatus = 'UPCOMING' | 'ACTIVE' | 'DONE' | 'CANCELED'
+export type ProductOrderStatus = 'NOT_READY' | 'READY' | 'CANCELED'
+export type PaymentMethod = 'CARD'
+export type SeatType = 'REGULAR' | 'VIP'
+export type PaymentStatus = 'CREATED' | 'PAID' | 'FAILED' | 'CANCELED' | 'REFUND'
+
+export interface AdminPurchaseResponse {
+  id: number
+  userId: number
+  clubId: number
+  userPhone: string | null
+  paymentStatus: PaymentStatus
+  totalAmountRub: number
+  bookingTotalRub: number
+  productsTotalRub: number
+  seatLabels: string[]
+  productCount: number
+  createdAt: string
+}
+
+export interface AdminPurchaseSeatDetail {
+  seatId: number
+  label: string
+  type: SeatType
+}
+
+export interface AdminPurchaseBookingDetail {
+  bookingId: number
+  status: BookingStatus
+  startAt: string
+  endAt: string
+  durationHours: number
+  rateRubPerHour: number
+  totalRub: number
+  seats: AdminPurchaseSeatDetail[]
+}
+
+export interface AdminPurchaseOrderItemDetail {
+  title: string
+  qty: number
+  priceRub: number
+  subtotalRub: number
+}
+
+export interface AdminPurchaseProductOrderDetail {
+  orderId: number
+  status: ProductOrderStatus
+  totalRub: number
+  items: AdminPurchaseOrderItemDetail[]
+}
+
+export interface AdminPurchaseDetailResponse {
+  id: number
+  userId: number
+  userPhone: string | null
+  clubId: number
+  createdAt: string
+  paymentMethod: PaymentMethod
+  paymentStatus: PaymentStatus
+  bookingTotalRub: number
+  productsTotalRub: number
+  totalRub: number
+  booking: AdminPurchaseBookingDetail | null
+  productOrder: AdminPurchaseProductOrderDetail | null
 }

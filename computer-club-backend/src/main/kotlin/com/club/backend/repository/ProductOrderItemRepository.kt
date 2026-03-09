@@ -16,4 +16,15 @@ interface ProductOrderItemRepository : JpaRepository<ProductOrderItemEntity, Lon
         """
     )
     fun findAllByOrderIdFetchProduct(@Param("orderId") orderId: Long): List<ProductOrderItemEntity>
+
+    @Query(
+        """
+        select i
+        from ProductOrderItemEntity i
+        join fetch i.productOrder po
+        join fetch po.purchase
+        where po.purchase.id in :purchaseIds
+        """
+    )
+    fun findByPurchaseIds(@Param("purchaseIds") purchaseIds: Collection<Long>): List<ProductOrderItemEntity>
 }

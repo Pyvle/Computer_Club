@@ -8,6 +8,7 @@ import jakarta.persistence.EntityNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 @Service
 class ClubAdminManagementService(
@@ -21,20 +22,15 @@ class ClubAdminManagementService(
         clubRepository.findById(clubId).orElseThrow { EntityNotFoundException("Club not found") }
         return clubStaffRepository.findAllByIdClubId(clubId)
             .sortedBy { it.role.name }
-            .map {
-                ClubStaffView(
-                    userId = it.user.id!!,
-                    phone = it.user.phone,
-                    role = it.role.name
-                )
-            }
+            .map { it.toView() }
     }
 
     /** Добавить/обновить ADMIN. OWNER не трогаем через этот метод. */
     @Transactional
-    fun upsertAdmin(clubId: Long, userId: Long): ClubStaffView {
+    fun upsertAdmin(clubId: Long, userId: Long, addedByUserId: Long): ClubStaffView {
         val club = clubRepository.findById(clubId).orElseThrow { EntityNotFoundException("Club not found") }
         val user = userRepository.findById(userId).orElseThrow { EntityNotFoundException("User not found") }
+        val addedBy = userRepository.findById(addedByUserId).orElse(null)
 
         val existing = clubStaffRepository.findByIdClubIdAndIdUserId(clubId, userId).orElse(null)
         val saved = if (existing == null) {
@@ -44,6 +40,7 @@ class ClubAdminManagementService(
                     club = club,
                     user = user,
                     role = ClubRole.ADMIN,
+                    addedByUser = addedBy,
                     createdAt = LocalDateTime.now(),
                     updatedAt = LocalDateTime.now()
                 )
@@ -56,7 +53,7 @@ class ClubAdminManagementService(
             clubStaffRepository.save(existing)
         }
 
-        return ClubStaffView(userId = user.id!!, phone = user.phone, role = saved.role.name)
+        return saved.toView()
     }
 
     @Transactional(readOnly = true)
@@ -64,7 +61,7 @@ class ClubAdminManagementService(
         val normalized = normalizePhone(phone)
         val user = userRepository.findByPhone(normalized)
             .orElseThrow { EntityNotFoundException("Пользователь с таким номером не найден") }
-        return ClubStaffView(userId = user.id!!, phone = user.phone, role = user.globalRole.name)
+        return ClubStaffView(userId = user.id!!, phone = user.phone, role = user.globalRole.name, addedAt = null, addedByUserId = null, addedByPhone = null)
     }
 
     private fun normalizePhone(raw: String): String {
@@ -84,5 +81,19 @@ class ClubAdminManagementService(
 data class ClubStaffView(
     val userId: Long,
     val phone: String?,
-    val role: String
+    val role: String,
+    val addedAt: String?,
+    val addedByUserId: Long?,
+    val addedByPhone: String?
+)
+
+private val isoFormatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME
+
+private fun ClubStaffEntity.toView() = ClubStaffView(
+    userId = user.id!!,
+    phone = user.phone,
+    role = role.name,
+    addedAt = createdAt.format(isoFormatter),
+    addedByUserId = addedByUser?.id,
+    addedByPhone = addedByUser?.phone
 )

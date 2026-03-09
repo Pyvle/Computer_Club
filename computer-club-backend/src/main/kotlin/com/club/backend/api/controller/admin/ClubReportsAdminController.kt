@@ -1,6 +1,7 @@
 package com.club.backend.api.controller.admin
 
 import com.club.backend.api.dto.admin.AdminBookingResponse
+import com.club.backend.api.dto.admin.AdminPurchaseDetailResponse
 import com.club.backend.api.dto.admin.AdminPurchaseResponse
 import com.club.backend.domain.enum.BookingStatus
 import com.club.backend.domain.enum.PaymentStatus
@@ -44,4 +45,18 @@ class ClubReportsAdminController(
             to = to?.let(LocalDateTime::parse),
             status = status
         )
+
+    @GetMapping("/purchases/{purchaseId}")
+    @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_REPORTS_VIEW)")
+    fun purchaseDetail(
+        @PathVariable clubId: Long,
+        @PathVariable purchaseId: Long
+    ): AdminPurchaseDetailResponse = clubReportsService.purchaseDetail(clubId, purchaseId)
+
+    @PostMapping("/purchases/{purchaseId}/cancel")
+    @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_REPORTS_VIEW)")
+    fun cancelPurchase(
+        @PathVariable clubId: Long,
+        @PathVariable purchaseId: Long
+    ): AdminPurchaseResponse = clubReportsService.adminCancel(clubId, purchaseId)
 }

@@ -38,6 +38,10 @@ class ClubStaffEntity(
     @Column(nullable = false, length = 16)
     var role: ClubRole,
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "added_by_user_id")
+    var addedByUser: UserEntity? = null,
+
     @Column(name = "created_at", nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now(),
 

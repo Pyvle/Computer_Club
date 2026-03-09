@@ -65,4 +65,15 @@ interface BookingRepository : JpaRepository<BookingEntity, Long> {
         @Param("userId") userId: Long,
         @Param("purchaseId") purchaseId: Long
     ): List<BookingEntity>
+
+    @Query(
+        """
+        select distinct b
+        from BookingEntity b
+        left join fetch b.seats bs
+        left join fetch bs.seat s
+        where b.purchase.id in :purchaseIds
+        """
+    )
+    fun findByPurchaseIds(@Param("purchaseIds") purchaseIds: Collection<Long>): List<BookingEntity>
 }
