@@ -4,6 +4,7 @@ import com.club.backend.api.dto.admin.AdminBookingDetailResponse
 import com.club.backend.api.dto.admin.AdminBookingResponse
 import com.club.backend.api.dto.admin.AdminPurchaseDetailResponse
 import com.club.backend.api.dto.admin.AdminPurchaseResponse
+import com.club.backend.api.dto.admin.ClubDashboardResponse
 import com.club.backend.domain.enum.BookingStatus
 import com.club.backend.domain.enum.PaymentStatus
 import com.club.backend.service.ClubReportsService
@@ -16,6 +17,11 @@ import java.time.LocalDateTime
 class ClubReportsAdminController(
     private val clubReportsService: ClubReportsService
 ) {
+
+    @GetMapping("/dashboard")
+    @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_REPORTS_VIEW)")
+    fun dashboard(@PathVariable clubId: Long): ClubDashboardResponse =
+        clubReportsService.dashboard(clubId)
 
     @GetMapping("/bookings")
     @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_REPORTS_VIEW)")

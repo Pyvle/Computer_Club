@@ -5,6 +5,7 @@ import com.club.backend.domain.enum.PaymentMethod
 import com.club.backend.domain.enum.PaymentStatus
 import com.club.backend.domain.enum.ProductOrderStatus
 import com.club.backend.domain.enum.SeatType
+import java.time.LocalDateTime
 
 data class AdminBookingResponse(
     val id: Long,
@@ -92,4 +93,31 @@ data class AdminPurchaseOrderItemDetail(
     val qty: Int,
     val priceRub: Int,
     val subtotalRub: Int
+)
+
+// preview-DTO для дашборда — только нужные поля, без балласта list-ответов
+data class DashboardBookingPreview(
+    val id: Long,
+    val userPhone: String?,
+    val startAt: LocalDateTime,
+    val endAt: LocalDateTime,
+    val status: BookingStatus
+)
+
+data class DashboardPurchasePreview(
+    val id: Long,
+    val userPhone: String?,
+    val totalRub: Int,
+    val paymentStatus: PaymentStatus,
+    val createdAt: LocalDateTime
+)
+
+data class ClubDashboardResponse(
+    val activeBookingsCount: Int,
+    val upcomingTodayCount: Int,
+    val occupiedSeats: Int,
+    val totalSeats: Int,
+    val todayRevenueRub: Long,
+    val recentBookings: List<DashboardBookingPreview>,
+    val recentPurchases: List<DashboardPurchasePreview>
 )

@@ -19,4 +19,6 @@ interface SeatRepository : JpaRepository<SeatEntity, Long> {
     fun existsByClubIdAndLabel(clubId: Long, label: String): Boolean
 
     fun existsByIdAndClubId(id: Long, clubId: Long): Boolean
+
+    fun countByClubIdAndIsActiveTrue(clubId: Long): Long
 }

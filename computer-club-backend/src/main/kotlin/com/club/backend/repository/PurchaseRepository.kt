@@ -1,7 +1,9 @@
 package com.club.backend.repository
 
+import com.club.backend.api.dto.admin.DashboardPurchasePreview
 import com.club.backend.domain.entity.PurchaseEntity
 import com.club.backend.domain.enum.PaymentStatus
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
@@ -40,4 +42,29 @@ interface PurchaseRepository : JpaRepository<PurchaseEntity, Long> {
           and p.club.id = :clubId
     """)
     fun findByIdAndClubIdFetch(@Param("id") id: Long, @Param("clubId") clubId: Long): PurchaseEntity?
+
+    // считаем по таймзоне сервера — для MVP достаточно
+    @Query("SELECT COALESCE(SUM(p.totalRub), 0) FROM PurchaseEntity p WHERE p.club.id = :clubId AND p.paymentStatus = 'PAID' AND p.createdAt >= :from AND p.createdAt < :to")
+    fun sumPaidRevenue(
+        @Param("clubId") clubId: Long,
+        @Param("from") from: LocalDateTime,
+        @Param("to") to: LocalDateTime
+    ): Long
+
+    @Query("SELECT COUNT(p) FROM PurchaseEntity p WHERE p.club.id = :clubId AND p.paymentStatus = 'CREATED'")
+    fun countPendingByClubId(@Param("clubId") clubId: Long): Long
+
+    // JPQL-проекция — избегает дублей строк и пагинации в памяти
+    @Query("""
+        SELECT new com.club.backend.api.dto.admin.DashboardPurchasePreview(
+            p.id, u.phone, p.totalRub, p.paymentStatus, p.createdAt
+        )
+        FROM PurchaseEntity p JOIN p.user u
+        WHERE p.club.id = :clubId
+        ORDER BY p.id DESC
+    """)
+    fun findRecentPreviews(
+        @Param("clubId") clubId: Long,
+        pageable: Pageable
+    ): List<DashboardPurchasePreview>
 }

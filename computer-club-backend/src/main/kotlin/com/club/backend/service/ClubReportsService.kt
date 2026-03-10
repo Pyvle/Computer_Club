@@ -8,6 +8,7 @@ import com.club.backend.api.dto.admin.AdminPurchaseOrderItemDetail
 import com.club.backend.api.dto.admin.AdminPurchaseProductOrderDetail
 import com.club.backend.api.dto.admin.AdminPurchaseResponse
 import com.club.backend.api.dto.admin.AdminPurchaseSeatDetail
+import com.club.backend.api.dto.admin.ClubDashboardResponse
 import com.club.backend.domain.entity.BookingEntity
 import com.club.backend.domain.entity.PurchaseEntity
 import com.club.backend.domain.enum.BookingStatus
@@ -15,10 +16,13 @@ import com.club.backend.domain.enum.PaymentStatus
 import com.club.backend.repository.BookingRepository
 import com.club.backend.repository.ProductOrderItemRepository
 import com.club.backend.repository.PurchaseRepository
+import com.club.backend.repository.SeatRepository
+import org.springframework.data.domain.PageRequest
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -27,7 +31,8 @@ import java.time.temporal.ChronoUnit
 class ClubReportsService(
     private val bookingRepository: BookingRepository,
     private val purchaseRepository: PurchaseRepository,
-    private val productOrderItemRepository: ProductOrderItemRepository
+    private val productOrderItemRepository: ProductOrderItemRepository,
+    private val seatRepository: SeatRepository
 ) {
 
     // ISO formatter — тот же формат что и в ClubAdminManagementService
@@ -154,6 +159,22 @@ class ClubReportsService(
             totalRub = purchase.totalRub,
             booking = booking,
             productOrder = productOrder
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun dashboard(clubId: Long): ClubDashboardResponse {
+        val todayStart    = LocalDate.now().atStartOfDay()
+        val tomorrowStart = todayStart.plusDays(1)
+
+        return ClubDashboardResponse(
+            activeBookingsCount = bookingRepository.countByClubIdAndStatus(clubId, BookingStatus.ACTIVE).toInt(),
+            upcomingTodayCount  = bookingRepository.countUpcomingToday(clubId, todayStart, tomorrowStart).toInt(),
+            occupiedSeats       = bookingRepository.countOccupiedSeats(clubId).toInt(),
+            totalSeats          = seatRepository.countByClubIdAndIsActiveTrue(clubId).toInt(),
+            todayRevenueRub     = purchaseRepository.sumPaidRevenue(clubId, todayStart, tomorrowStart),
+            recentBookings      = bookingRepository.findRecentPreviews(clubId, PageRequest.of(0, 5)),
+            recentPurchases     = purchaseRepository.findRecentPreviews(clubId, PageRequest.of(0, 5))
         )
     }
 

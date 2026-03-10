@@ -1,8 +1,10 @@
 package com.club.backend.repository
 
+import com.club.backend.api.dto.admin.DashboardBookingPreview
 import com.club.backend.domain.entity.BookingEntity
 import com.club.backend.domain.enum.BookingStatus
 import com.club.backend.repository.projection.BusySeatProjection
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
@@ -92,4 +94,34 @@ interface BookingRepository : JpaRepository<BookingEntity, Long> {
         """
     )
     fun findByPurchaseIds(@Param("purchaseIds") purchaseIds: Collection<Long>): List<BookingEntity>
+
+    @Query("SELECT COUNT(b) FROM BookingEntity b WHERE b.club.id = :clubId AND b.status = :status")
+    fun countByClubIdAndStatus(
+        @Param("clubId") clubId: Long,
+        @Param("status") status: BookingStatus
+    ): Long
+
+    @Query("SELECT COUNT(b) FROM BookingEntity b WHERE b.club.id = :clubId AND b.status = 'UPCOMING' AND b.startAt >= :from AND b.startAt < :to")
+    fun countUpcomingToday(
+        @Param("clubId") clubId: Long,
+        @Param("from") from: LocalDateTime,
+        @Param("to") to: LocalDateTime
+    ): Long
+
+    @Query("SELECT COUNT(bs.seat.id) FROM BookingEntity b JOIN b.seats bs WHERE b.club.id = :clubId AND b.status = 'ACTIVE'")
+    fun countOccupiedSeats(@Param("clubId") clubId: Long): Long
+
+    // JPQL-проекция — избегает дублей строк и пагинации в памяти
+    @Query("""
+        SELECT new com.club.backend.api.dto.admin.DashboardBookingPreview(
+            b.id, u.phone, b.startAt, b.endAt, b.status
+        )
+        FROM BookingEntity b JOIN b.user u
+        WHERE b.club.id = :clubId
+        ORDER BY b.id DESC
+    """)
+    fun findRecentPreviews(
+        @Param("clubId") clubId: Long,
+        pageable: Pageable
+    ): List<DashboardBookingPreview>
 }

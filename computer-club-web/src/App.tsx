@@ -18,6 +18,7 @@ import ClubBookingsPage from './pages/club-bookings/ClubBookingsPage'
 import ClubBookingDetailPage from './pages/club-booking-detail/ClubBookingDetailPage'
 import ClubPurchasesPage from './pages/club-purchases/ClubPurchasesPage'
 import ClubPurchaseDetailPage from './pages/club-purchase-detail/ClubPurchaseDetailPage'
+import ClubDashboardPage from './pages/club-dashboard/ClubDashboardPage'
 import ClubApplicationsPage from './pages/club-applications/ClubApplicationsPage'
 import GlobalCatalogPage from './pages/global-catalog/GlobalCatalogPage'
 import UsersPage from './pages/users/UsersPage'
@@ -53,6 +54,7 @@ export default function App() {
                 {/* Панель партнёра (OWNER/ADMIN) */}
                 <Route element={<OwnerLayout />}>
                   <Route path="/admin/my-clubs" element={<MyClubsPage />} />
+                  <Route path="/admin/club/:clubId/dashboard" element={<ClubDashboardPage />} />
                   <Route path="/admin/club/:clubId/catalog" element={<ClubCatalogPage />} />
                   <Route path="/admin/club/:clubId/seats" element={<ClubSeatsPage />} />
                   <Route path="/admin/club/:clubId/floorplans" element={<ClubFloorplansPage />} />

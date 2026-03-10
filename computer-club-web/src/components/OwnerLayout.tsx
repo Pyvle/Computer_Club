@@ -1,6 +1,7 @@
 import { Layout, Menu, Select, Button, Typography, App } from 'antd'
 import {
   AppstoreOutlined,
+  DashboardOutlined,
   TeamOutlined,
   LayoutOutlined,
   EnvironmentOutlined,
@@ -18,6 +19,7 @@ import SetPasswordModal from './SetPasswordModal'
 const { Sider, Header, Content } = Layout
 
 const CLUB_NAV = [
+  { key: 'dashboard', icon: <DashboardOutlined />, label: 'Дашборд' },
   { key: 'catalog', icon: <AppstoreOutlined />, label: 'Каталог' },
   { key: 'seats', icon: <EnvironmentOutlined />, label: 'Места' },
   { key: 'floorplans', icon: <LayoutOutlined />, label: 'Схемы зала' },
@@ -47,7 +49,7 @@ export default function OwnerLayout() {
   }
 
   function handleClubChange(id: number) {
-    navigate(`/admin/club/${id}/catalog`)
+    navigate(`/admin/club/${id}/dashboard`)
   }
 
   const pathSegment = location.pathname.split('/').pop()

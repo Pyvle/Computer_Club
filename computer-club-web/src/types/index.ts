@@ -304,3 +304,29 @@ export interface AdminPurchaseDetailResponse {
   booking: AdminPurchaseBookingDetail | null
   productOrder: AdminPurchaseProductOrderDetail | null
 }
+
+export interface DashboardBookingPreview {
+  id: number
+  userPhone: string | null
+  startAt: string
+  endAt: string
+  status: BookingStatus
+}
+
+export interface DashboardPurchasePreview {
+  id: number
+  userPhone: string | null
+  totalRub: number
+  paymentStatus: PaymentStatus
+  createdAt: string
+}
+
+export interface ClubDashboardResponse {
+  activeBookingsCount: number
+  upcomingTodayCount: number
+  occupiedSeats: number
+  totalSeats: number
+  todayRevenueRub: number
+  recentBookings: DashboardBookingPreview[]
+  recentPurchases: DashboardPurchasePreview[]
+}
