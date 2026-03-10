@@ -21,7 +21,10 @@ class AuditQueryService(
         limit: Int
     ): List<AuditLogResponse> {
         val rows = auditLogRepository
-            .findFiltered(clubId, action, from, to)
+            .findAllByClubId(clubId)
+            .filter { action == null || it.action == action }
+            .filter { from == null || !it.createdAt.isBefore(from) }
+            .filter { to == null || !it.createdAt.isAfter(to) }
             .take(limit.coerceIn(1, 500))
         return rows.map {
             AuditLogResponse(
