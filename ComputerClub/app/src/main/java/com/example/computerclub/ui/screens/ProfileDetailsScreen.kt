@@ -25,7 +25,6 @@ fun ProfileDetailsScreen(appVm: AppViewModel, nav: NavHostController) {
 
         Card {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Логин: ${u.username}")
                 Text("Телефон: ${u.phone}")
             }
         }

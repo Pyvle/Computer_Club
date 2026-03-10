@@ -11,4 +11,4 @@ import kotlinx.serialization.Serializable
 
 @Serializable data class AuthTokensResponse(val accessToken: String, val refreshToken: String)
 
-@Serializable data class MeResponse(val id: Long, val phone: String, val username: String)
+@Serializable data class MeResponse(val id: Long, val phone: String)

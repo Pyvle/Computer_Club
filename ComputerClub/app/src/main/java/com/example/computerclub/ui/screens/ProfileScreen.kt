@@ -36,7 +36,7 @@ fun ProfileScreen(appVm: AppViewModel, nav: NavHostController) {
 
         Card(onClick = { nav.navigate(Routes.ProfileDetails) }) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("👤 ${u.username}", style = MaterialTheme.typography.titleLarge)
+                Text("👤 ${u.phone}", style = MaterialTheme.typography.titleLarge)
                 Text("Персональные данные", style = MaterialTheme.typography.labelMedium)
             }
         }

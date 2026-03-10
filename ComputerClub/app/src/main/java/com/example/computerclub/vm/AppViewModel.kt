@@ -97,7 +97,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // В твоей модели User id — строка (ты создаёшь User("u1", ...))
                 user = User(
                     id = me.id.toString(),
-                    username = me.username,
                     phone = me.phone
                 )
                 onSuccess()
@@ -136,7 +135,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val me = network.authApi.me()
                 user = User(
                     id = me.id.toString(),
-                    username = me.username,
                     phone = me.phone
                 )
 

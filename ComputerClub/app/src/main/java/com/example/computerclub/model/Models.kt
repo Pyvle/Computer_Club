@@ -3,7 +3,7 @@ package com.example.computerclub.model
 import java.time.LocalDate
 import java.time.LocalDateTime
 
-data class User(val id: String, val username: String, val phone: String)
+data class User(val id: String, val phone: String)
 
 data class NewsItem(
     val id: String,
