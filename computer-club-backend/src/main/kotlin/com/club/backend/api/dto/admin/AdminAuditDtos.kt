@@ -4,6 +4,7 @@ data class AuditLogResponse(
     val id: Long,
     val createdAt: String,
     val actorUserId: Long,
+    val actorPhone: String?,
     val action: String,
     val entityType: String,
     val entityId: String?,

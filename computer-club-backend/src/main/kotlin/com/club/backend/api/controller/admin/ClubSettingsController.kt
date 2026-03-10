@@ -4,6 +4,7 @@ import com.club.backend.api.dto.admin.ClubSettingsResponse
 import com.club.backend.api.dto.admin.UpdateClubSettingsRequest
 import com.club.backend.service.ClubSettingsService
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.*
 
 @RestController
@@ -21,6 +22,7 @@ class ClubSettingsController(
     @PreAuthorize("@rbac.canManageClub(authentication, #clubId)")
     fun update(
         @PathVariable clubId: Long,
-        @RequestBody req: UpdateClubSettingsRequest
-    ): ClubSettingsResponse = clubSettingsService.update(clubId, req)
+        @RequestBody req: UpdateClubSettingsRequest,
+        authentication: Authentication
+    ): ClubSettingsResponse = clubSettingsService.update(clubId, req, authentication.name.toLong())
 }

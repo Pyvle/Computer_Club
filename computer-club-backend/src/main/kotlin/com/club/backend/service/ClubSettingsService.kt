@@ -11,7 +11,8 @@ import java.time.LocalDateTime
 
 @Service
 class ClubSettingsService(
-    private val clubRepository: ClubRepository
+    private val clubRepository: ClubRepository,
+    private val auditService: AuditService
 ) {
 
     fun get(clubId: Long): ClubSettingsResponse {
@@ -21,16 +22,27 @@ class ClubSettingsService(
     }
 
     @Transactional
-    fun update(clubId: Long, req: UpdateClubSettingsRequest): ClubSettingsResponse {
+    fun update(clubId: Long, req: UpdateClubSettingsRequest, actorUserId: Long): ClubSettingsResponse {
         val club = clubRepository.findById(clubId)
             .orElseThrow { ResponseStatusException(HttpStatus.NOT_FOUND, "Club not found") }
+        val before = club.toResponse()
         club.name = req.name
         club.address = req.address
         club.locationText = req.locationText?.takeIf { it.isNotBlank() }
         club.description = req.description?.takeIf { it.isNotBlank() }
         club.isActive = req.isActive
         club.updatedAt = LocalDateTime.now()
-        return club.toResponse()
+        val after = club.toResponse()
+        auditService.log(
+            actorUserId = actorUserId,
+            clubId = clubId,
+            action = "CLUB_SETTINGS_UPDATE",
+            entityType = "Club",
+            entityId = clubId.toString(),
+            before = before,
+            after = after
+        )
+        return after
     }
 
     private fun com.club.backend.domain.entity.ClubEntity.toResponse() = ClubSettingsResponse(

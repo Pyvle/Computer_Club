@@ -338,6 +338,18 @@ export interface UpdateClubSettingsRequest {
   isActive: boolean
 }
 
+export interface AuditLogResponse {
+  id: number
+  createdAt: string
+  actorUserId: number
+  actorPhone: string | null
+  action: string
+  entityType: string
+  entityId: string | null
+  before: unknown
+  after: unknown
+}
+
 export interface ClubDashboardResponse {
   activeBookingsCount: number
   upcomingTodayCount: number

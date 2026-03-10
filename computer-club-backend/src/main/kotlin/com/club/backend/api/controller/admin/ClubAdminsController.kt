@@ -28,8 +28,12 @@ class ClubAdminsController(
 
     @DeleteMapping("/{userId}")
     @PreAuthorize("@rbac.canManageClubAdmins(authentication, #clubId)")
-    fun remove(@PathVariable clubId: Long, @PathVariable userId: Long) {
-        clubAdminManagementService.removeAdmin(clubId, userId)
+    fun remove(
+        @PathVariable clubId: Long,
+        @PathVariable userId: Long,
+        authentication: Authentication
+    ) {
+        clubAdminManagementService.removeAdmin(clubId, userId, authentication.name.toLong())
     }
 
     @GetMapping("/users/by-phone")

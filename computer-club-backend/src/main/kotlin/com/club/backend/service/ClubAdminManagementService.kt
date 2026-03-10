@@ -14,7 +14,8 @@ import java.time.format.DateTimeFormatter
 class ClubAdminManagementService(
     private val clubRepository: ClubRepository,
     private val userRepository: UserRepository,
-    private val clubStaffRepository: ClubStaffRepository
+    private val clubStaffRepository: ClubStaffRepository,
+    private val auditService: AuditService
 ) {
 
     @Transactional(readOnly = true)
@@ -53,6 +54,14 @@ class ClubAdminManagementService(
             clubStaffRepository.save(existing)
         }
 
+        auditService.log(
+            actorUserId = addedByUserId,
+            clubId = clubId,
+            action = "STAFF_ADD",
+            entityType = "ClubStaff",
+            entityId = userId.toString(),
+            after = mapOf("userId" to userId, "role" to "ADMIN")
+        )
         return saved.toView()
     }
 
@@ -70,11 +79,19 @@ class ClubAdminManagementService(
     }
 
     @Transactional
-    fun removeAdmin(clubId: Long, userId: Long) {
+    fun removeAdmin(clubId: Long, userId: Long, actorUserId: Long) {
         val cs = clubStaffRepository.findByIdClubIdAndIdUserId(clubId, userId)
             .orElseThrow { EntityNotFoundException("Staff member not found") }
         require(cs.role != ClubRole.OWNER) { "Cannot remove club owner" }
         clubStaffRepository.delete(cs)
+        auditService.log(
+            actorUserId = actorUserId,
+            clubId = clubId,
+            action = "STAFF_REMOVE",
+            entityType = "ClubStaff",
+            entityId = userId.toString(),
+            before = mapOf("userId" to userId, "role" to cs.role.name)
+        )
     }
 }
 

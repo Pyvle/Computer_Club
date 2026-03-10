@@ -20,6 +20,7 @@ import ClubPurchasesPage from './pages/club-purchases/ClubPurchasesPage'
 import ClubPurchaseDetailPage from './pages/club-purchase-detail/ClubPurchaseDetailPage'
 import ClubDashboardPage from './pages/club-dashboard/ClubDashboardPage'
 import ClubSettingsPage from './pages/club-settings/ClubSettingsPage'
+import ClubAuditPage from './pages/club-audit/ClubAuditPage'
 import ClubApplicationsPage from './pages/club-applications/ClubApplicationsPage'
 import GlobalCatalogPage from './pages/global-catalog/GlobalCatalogPage'
 import UsersPage from './pages/users/UsersPage'
@@ -64,6 +65,7 @@ export default function App() {
                   <Route path="/admin/club/:clubId/bookings/:bookingId" element={<ClubBookingDetailPage />} />
                   <Route path="/admin/club/:clubId/purchases" element={<ClubPurchasesPage />} />
                   <Route path="/admin/club/:clubId/purchases/:purchaseId" element={<ClubPurchaseDetailPage />} />
+                  <Route path="/admin/club/:clubId/audit" element={<ClubAuditPage />} />
                   <Route path="/admin/club/:clubId/settings" element={<ClubSettingsPage />} />
                   <Route path="/admin/club/:clubId/*" element={<Placeholder name="Панель клуба" />} />
                 </Route>
