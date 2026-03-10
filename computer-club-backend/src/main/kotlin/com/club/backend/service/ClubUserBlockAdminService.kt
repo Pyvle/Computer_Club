@@ -15,7 +15,11 @@ data class ClubUserBlockView(
     val phone: String?,
     val isBlocked: Boolean,
     val reason: String?,
-    val blockedUntil: LocalDateTime?
+    val blockedUntil: LocalDateTime?,
+    val blockedByUserId: Long?,
+    val blockedByPhone: String?,
+    val createdAt: LocalDateTime,
+    val updatedAt: LocalDateTime
 )
 
 data class UpsertClubUserBlockRequest(
@@ -35,21 +39,14 @@ class ClubUserBlockAdminService(
     @Transactional(readOnly = true)
     fun list(clubId: Long): List<ClubUserBlockView> {
         clubRepository.findById(clubId).orElseThrow { EntityNotFoundException("Club not found") }
-        return clubUserBlockRepository.findAllByIdClubId(clubId).map {
-            ClubUserBlockView(
-                userId = it.user.id!!,
-                phone = it.user.phone,
-                isBlocked = it.isBlocked,
-                reason = it.reason,
-                blockedUntil = it.blockedUntil
-            )
-        }
+        return clubUserBlockRepository.findAllByClubIdFetched(clubId).map { it.toView() }
     }
 
     @Transactional
     fun upsert(actorUserId: Long, clubId: Long, userId: Long, req: UpsertClubUserBlockRequest): ClubUserBlockView {
         val club = clubRepository.findById(clubId).orElseThrow { EntityNotFoundException("Club not found") }
         val user = userRepository.findById(userId).orElseThrow { EntityNotFoundException("User not found") }
+        val actor = userRepository.findById(actorUserId).orElse(null)
 
         val id = ClubUserBlockId(clubId = clubId, userId = userId)
         val existing = clubUserBlockRepository.findById(id).orElse(null)
@@ -63,6 +60,8 @@ class ClubUserBlockAdminService(
                     isBlocked = req.isBlocked,
                     reason = req.reason,
                     blockedUntil = req.blockedUntil,
+                    // записываем кто заблокировал только при активной блокировке
+                    blockedBy = if (req.isBlocked) actor else null,
                     createdAt = LocalDateTime.now(),
                     updatedAt = LocalDateTime.now()
                 )
@@ -71,6 +70,7 @@ class ClubUserBlockAdminService(
             existing.isBlocked = req.isBlocked
             existing.reason = req.reason
             existing.blockedUntil = req.blockedUntil
+            existing.blockedBy = if (req.isBlocked) actor else null
             existing.updatedAt = LocalDateTime.now()
             clubUserBlockRepository.save(existing)
         }
@@ -85,12 +85,18 @@ class ClubUserBlockAdminService(
             after = mapOf("isBlocked" to saved.isBlocked, "reason" to saved.reason, "blockedUntil" to saved.blockedUntil?.toString())
         )
 
-        return ClubUserBlockView(
-            userId = user.id!!,
-            phone = user.phone,
-            isBlocked = saved.isBlocked,
-            reason = saved.reason,
-            blockedUntil = saved.blockedUntil
-        )
+        return saved.toView()
     }
+
+    private fun ClubUserBlockEntity.toView() = ClubUserBlockView(
+        userId = user.id!!,
+        phone = user.phone,
+        isBlocked = isBlocked,
+        reason = reason,
+        blockedUntil = blockedUntil,
+        blockedByUserId = blockedBy?.id,
+        blockedByPhone = blockedBy?.phone,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
 }

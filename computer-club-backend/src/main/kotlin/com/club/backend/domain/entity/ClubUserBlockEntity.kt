@@ -28,6 +28,10 @@ class ClubUserBlockEntity(
     @Column(name = "blocked_until")
     var blockedUntil: LocalDateTime? = null,
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "blocked_by_user_id")
+    var blockedBy: UserEntity? = null,
+
     @Column(name = "created_at", nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now(),
 

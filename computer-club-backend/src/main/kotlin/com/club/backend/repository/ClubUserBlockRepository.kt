@@ -22,7 +22,14 @@ interface ClubUserBlockRepository : JpaRepository<ClubUserBlockEntity, ClubUserB
         @Param("now") now: LocalDateTime
     ): Boolean
 
-    fun findAllByIdClubId(clubId: Long): List<ClubUserBlockEntity>
+    @Query("""
+        select b from ClubUserBlockEntity b
+        left join fetch b.user
+        left join fetch b.blockedBy
+        where b.id.clubId = :clubId
+        order by b.createdAt desc
+    """)
+    fun findAllByClubIdFetched(@Param("clubId") clubId: Long): List<ClubUserBlockEntity>
 
     @Query("""
         select b from ClubUserBlockEntity b

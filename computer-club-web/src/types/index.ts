@@ -338,6 +338,24 @@ export interface UpdateClubSettingsRequest {
   isActive: boolean
 }
 
+export interface ClubUserBlockView {
+  userId: number
+  phone: string | null
+  isBlocked: boolean
+  reason: string | null
+  blockedUntil: string | null
+  blockedByUserId: number | null
+  blockedByPhone: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UpsertClubUserBlockRequest {
+  isBlocked: boolean
+  reason?: string | null
+  blockedUntil?: string | null
+}
+
 export interface AuditLogResponse {
   id: number
   createdAt: string
