@@ -30,8 +30,9 @@ interface BookingRepository : JpaRepository<BookingEntity, Long> {
     ): List<BusySeatProjection>
 
     /**
-     * Возвращает брони клуба для отчётов; фильтры by from/to/status опциональны,
-     * from/to фильтруют по startAt брони.
+     * Возвращает все брони клуба для отчётов с предзагрузкой связей.
+     * Фильтрация по from/to/status выполняется в сервисе — PostgreSQL не может
+     * определить тип nullable-параметра в конструкции `:param is null`.
      */
     @Query(
         """
@@ -41,18 +42,10 @@ interface BookingRepository : JpaRepository<BookingEntity, Long> {
         left join fetch b.seats bs
         left join fetch bs.seat s
         where b.club.id = :clubId
-          and (:from is null or b.startAt >= :from)
-          and (:to is null or b.startAt <= :to)
-          and (:status is null or b.status = :status)
         order by b.startAt desc
         """
     )
-    fun findForAdmin(
-        @Param("clubId") clubId: Long,
-        @Param("from") from: LocalDateTime?,
-        @Param("to") to: LocalDateTime?,
-        @Param("status") status: BookingStatus?
-    ): List<BookingEntity>
+    fun findAllForAdmin(@Param("clubId") clubId: Long): List<BookingEntity>
 
     @Query(
         """

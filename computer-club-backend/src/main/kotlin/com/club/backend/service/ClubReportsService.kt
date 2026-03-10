@@ -40,7 +40,11 @@ class ClubReportsService(
 
     @Transactional(readOnly = true)
     fun bookings(clubId: Long, from: LocalDateTime?, to: LocalDateTime?, status: BookingStatus?): List<AdminBookingResponse> =
-        bookingRepository.findForAdmin(clubId, from, to, status).map { it.toDto() }
+        bookingRepository.findAllForAdmin(clubId)
+            .filter { from == null || !it.startAt.isBefore(from) }
+            .filter { to == null || !it.startAt.isAfter(to) }
+            .filter { status == null || it.status == status }
+            .map { it.toDto() }
 
     @Transactional(readOnly = true)
     fun bookingDetail(clubId: Long, bookingId: Long): AdminBookingDetailResponse {
@@ -63,7 +67,10 @@ class ClubReportsService(
     }
 
     fun purchases(clubId: Long, from: LocalDateTime?, to: LocalDateTime?, status: PaymentStatus?): List<AdminPurchaseResponse> {
-        val purchases = purchaseRepository.findForAdmin(clubId, from, to, status)
+        val purchases = purchaseRepository.findAllForAdmin(clubId)
+            .filter { from == null || !it.createdAt.isBefore(from) }
+            .filter { to == null || !it.createdAt.isAfter(to) }
+            .filter { status == null || it.paymentStatus == status }
         if (purchases.isEmpty()) return emptyList()
         val ids = purchases.map { it.id!! }
         val bookingsByPurchase = bookingRepository.findByPurchaseIds(ids)

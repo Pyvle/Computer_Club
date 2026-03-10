@@ -12,25 +12,21 @@ import java.time.LocalDateTime
 interface PurchaseRepository : JpaRepository<PurchaseEntity, Long> {
     fun findAllByUserIdOrderByCreatedAtDesc(userId: Long): List<PurchaseEntity>
 
-    /** Возвращает покупки клуба для отчётов; фильтры by from/to/status опциональны. */
+    /**
+     * Возвращает все покупки клуба для отчётов с предзагрузкой связей.
+     * Фильтрация по from/to/status выполняется в сервисе — PostgreSQL не может
+     * определить тип nullable-параметра в конструкции `:param is null`.
+     */
     @Query(
         """
         select p
         from PurchaseEntity p
         join fetch p.user u
         where p.club.id = :clubId
-          and (:from is null or p.createdAt >= :from)
-          and (:to is null or p.createdAt <= :to)
-          and (:status is null or p.paymentStatus = :status)
         order by p.createdAt desc
         """
     )
-    fun findForAdmin(
-        @Param("clubId") clubId: Long,
-        @Param("from") from: LocalDateTime?,
-        @Param("to") to: LocalDateTime?,
-        @Param("status") status: PaymentStatus?
-    ): List<PurchaseEntity>
+    fun findAllForAdmin(@Param("clubId") clubId: Long): List<PurchaseEntity>
 
     /** Загружает покупку конкретного клуба с user и club; нет — возвращает null. */
     @Query("""
