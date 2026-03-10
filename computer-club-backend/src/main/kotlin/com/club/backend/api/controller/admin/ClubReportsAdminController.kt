@@ -1,5 +1,6 @@
 package com.club.backend.api.controller.admin
 
+import com.club.backend.api.dto.admin.AdminBookingDetailResponse
 import com.club.backend.api.dto.admin.AdminBookingResponse
 import com.club.backend.api.dto.admin.AdminPurchaseDetailResponse
 import com.club.backend.api.dto.admin.AdminPurchaseResponse
@@ -30,6 +31,13 @@ class ClubReportsAdminController(
             to = to?.let(LocalDateTime::parse),
             status = status
         )
+
+    @GetMapping("/bookings/{bookingId}")
+    @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_REPORTS_VIEW)")
+    fun bookingDetail(
+        @PathVariable clubId: Long,
+        @PathVariable bookingId: Long
+    ): AdminBookingDetailResponse = clubReportsService.bookingDetail(clubId, bookingId)
 
     @GetMapping("/purchases")
     @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_REPORTS_VIEW)")

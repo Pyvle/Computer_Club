@@ -20,6 +20,20 @@ data class AdminBookingResponse(
     val purchaseId: Long?
 )
 
+data class AdminBookingDetailResponse(
+    val id: Long,
+    val status: BookingStatus,
+    val userId: Long,
+    val userPhone: String?,
+    val startAt: String,
+    val endAt: String,
+    val durationHours: Double,
+    val rateRubPerHour: Int,
+    val totalRub: Int,
+    val seats: List<AdminPurchaseSeatDetail>,
+    val purchaseId: Long?
+)
+
 data class AdminPurchaseResponse(
     val id: Long,
     val userId: Long,

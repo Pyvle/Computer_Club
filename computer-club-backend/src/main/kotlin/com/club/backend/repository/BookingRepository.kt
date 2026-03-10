@@ -54,6 +54,21 @@ interface BookingRepository : JpaRepository<BookingEntity, Long> {
 
     @Query(
         """
+        select distinct b
+        from BookingEntity b
+        left join fetch b.user u
+        left join fetch b.seats bs
+        left join fetch bs.seat s
+        where b.id = :id and b.club.id = :clubId
+        """
+    )
+    fun findByIdAndClubIdFetch(
+        @Param("id") id: Long,
+        @Param("clubId") clubId: Long
+    ): BookingEntity?
+
+    @Query(
+        """
     select distinct b
     from BookingEntity b
     left join fetch b.seats bs

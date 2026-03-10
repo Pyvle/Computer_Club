@@ -1,5 +1,6 @@
 package com.club.backend.service
 
+import com.club.backend.api.dto.admin.AdminBookingDetailResponse
 import com.club.backend.api.dto.admin.AdminBookingResponse
 import com.club.backend.api.dto.admin.AdminPurchaseBookingDetail
 import com.club.backend.api.dto.admin.AdminPurchaseDetailResponse
@@ -35,6 +36,26 @@ class ClubReportsService(
     @Transactional(readOnly = true)
     fun bookings(clubId: Long, from: LocalDateTime?, to: LocalDateTime?, status: BookingStatus?): List<AdminBookingResponse> =
         bookingRepository.findForAdmin(clubId, from, to, status).map { it.toDto() }
+
+    @Transactional(readOnly = true)
+    fun bookingDetail(clubId: Long, bookingId: Long): AdminBookingDetailResponse {
+        val b = bookingRepository.findByIdAndClubIdFetch(bookingId, clubId)
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found")
+        val minutes = ChronoUnit.MINUTES.between(b.startAt, b.endAt)
+        return AdminBookingDetailResponse(
+            id = b.id!!,
+            status = b.status,
+            userId = b.user.id!!,
+            userPhone = b.user.phone,
+            startAt = isoFmt.format(b.startAt),
+            endAt = isoFmt.format(b.endAt),
+            durationHours = minutes / 60.0,
+            rateRubPerHour = b.rateRubPerHourSnapshot,
+            totalRub = b.totalRubSnapshot,
+            seats = b.seats.map { bs -> AdminPurchaseSeatDetail(bs.seat.id!!, bs.seat.label, bs.seat.type) },
+            purchaseId = b.purchase?.id
+        )
+    }
 
     fun purchases(clubId: Long, from: LocalDateTime?, to: LocalDateTime?, status: PaymentStatus?): List<AdminPurchaseResponse> {
         val purchases = purchaseRepository.findForAdmin(clubId, from, to, status)
