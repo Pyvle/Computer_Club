@@ -321,6 +321,23 @@ export interface DashboardPurchasePreview {
   createdAt: string
 }
 
+export interface ClubSettingsResponse {
+  id: number
+  name: string
+  address: string
+  locationText: string | null
+  description: string | null
+  isActive: boolean
+}
+
+export interface UpdateClubSettingsRequest {
+  name: string
+  address: string
+  locationText: string | null
+  description: string | null
+  isActive: boolean
+}
+
 export interface ClubDashboardResponse {
   activeBookingsCount: number
   upcomingTodayCount: number

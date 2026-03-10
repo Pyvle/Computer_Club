@@ -11,6 +11,7 @@ import {
   AuditOutlined,
   HomeOutlined,
   LogoutOutlined,
+  SettingOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -28,6 +29,7 @@ const CLUB_NAV = [
   { key: 'purchases', icon: <ShoppingCartOutlined />, label: 'Покупки' },
   { key: 'user-blocks', icon: <StopOutlined />, label: 'Блокировки' },
   { key: 'audit', icon: <AuditOutlined />, label: 'Аудит' },
+  { key: 'settings', icon: <SettingOutlined />, label: 'Настройки' },
 ]
 
 export default function OwnerLayout() {
