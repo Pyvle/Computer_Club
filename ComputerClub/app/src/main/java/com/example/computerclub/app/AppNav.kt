@@ -21,8 +21,15 @@ fun AppNav(appVm: AppViewModel) {
     }
 
     LaunchedEffect(Unit) {
-        appVm.loadMe()
+        // сразу грузим клубы без авторизации — чтобы список был виден мгновенно
         appVm.loadClubs()
+        // затем восстанавливаем сессию; если токен жив — перезагружаем клубы
+        // с /clubs/available (даёт blocked-статус) и синхронизируем магазин/корзину
+        appVm.loadMe(onSuccess = {
+            appVm.loadClubs(force = true)
+            appVm.loadShopData(force = true)
+            appVm.syncCartProducts(force = true)
+        })
     }
 
     // единый стиль навигации для верхнеуровневых экранов (как в нижней панели)
@@ -105,11 +112,11 @@ fun AppNav(appVm: AppViewModel) {
                     appVm = appVm,
                     onEditBooking = { lineId ->
                         if (appVm.beginEditBooking(lineId)) {
-                            // можно оставить так, но лучше тоже top-level:
                             navigateTopLevel(Routes.Booking)
                         }
                     },
-                    onPaid = { navigateTopLevel(Routes.History) }
+                    onPaid = { navigateTopLevel(Routes.History) },
+                    onLoginRequired = { nav.navigate("login_phone?from=${Routes.Cart}") }
                 )
             }
 

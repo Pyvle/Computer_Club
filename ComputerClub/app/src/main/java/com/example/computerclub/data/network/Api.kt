@@ -95,6 +95,9 @@ interface CheckoutApi {
 
     @POST("/api/v1/purchases/{id}/pay")
     suspend fun payPurchase(@Path("id") id: Long): PurchaseListItemDto
+
+    @POST("/api/v1/purchases/{id}/cancel")
+    suspend fun cancelPurchase(@Path("id") id: Long): PurchaseListItemDto
 }
 
 interface SeatApi {

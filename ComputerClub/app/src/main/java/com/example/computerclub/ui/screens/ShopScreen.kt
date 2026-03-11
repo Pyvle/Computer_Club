@@ -54,10 +54,12 @@ fun ShopScreen(
         appVm.clubs.firstOrNull { it.id == appVm.selectedClubId }
     }
 
-    // не делаем forced-sync при каждом входе/переходе — это вызывает "возврат" удалённых товаров
     LaunchedEffect(appVm.selectedClubId, appVm.user, club?.isBlocked) {
-        if (appVm.user != null && club != null && !club.isBlocked) {
+        if (club?.isBlocked != true) {
             appVm.loadShopData(force = false)
+        }
+        // корзину синхронизируем только для авторизованных
+        if (appVm.user != null && club?.isBlocked != true) {
             appVm.syncCartProducts(force = false)
         }
     }
@@ -69,13 +71,6 @@ fun ShopScreen(
         if (selectedCategoryId.isBlank() && categories.isNotEmpty()) {
             selectedCategoryId = categories.first().id
         }
-    }
-
-    if (appVm.user == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Войдите, чтобы увидеть меню клуба")
-        }
-        return
     }
 
     if (club?.isBlocked == true) {

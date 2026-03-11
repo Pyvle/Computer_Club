@@ -44,13 +44,6 @@ fun ShopSearchScreen(appVm: AppViewModel) {
         appVm.clubs.firstOrNull { it.id == appVm.selectedClubId }
     }
 
-    if (appVm.user == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Войдите, чтобы искать товары")
-        }
-        return
-    }
-
     if (club?.isBlocked == true) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Вы заблокированы в этом клубе. Выберите другой клуб.")
@@ -60,8 +53,10 @@ fun ShopSearchScreen(appVm: AppViewModel) {
 
     // не делаем forced-sync при каждом заходе на экран
     LaunchedEffect(appVm.selectedClubId, appVm.user, club?.isBlocked) {
-        if (appVm.user != null && club != null && !club.isBlocked) {
+        if (club?.isBlocked != true) {
             appVm.loadShopData(force = false)
+        }
+        if (appVm.user != null && club?.isBlocked != true) {
             appVm.syncCartProducts(force = false)
         }
     }

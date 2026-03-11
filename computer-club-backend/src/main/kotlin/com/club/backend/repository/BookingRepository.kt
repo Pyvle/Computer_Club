@@ -6,6 +6,7 @@ import com.club.backend.domain.enum.BookingStatus
 import com.club.backend.repository.projection.BusySeatProjection
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.LocalDateTime
@@ -87,6 +88,41 @@ interface BookingRepository : JpaRepository<BookingEntity, Long> {
         """
     )
     fun findByPurchaseIds(@Param("purchaseIds") purchaseIds: Collection<Long>): List<BookingEntity>
+
+    /** Переводит UPCOMING → ACTIVE для броней, у которых startAt уже наступил. */
+    @Modifying
+    @Query("""
+        update BookingEntity b
+        set b.status = com.club.backend.domain.enum.BookingStatus.ACTIVE,
+            b.updatedAt = :now
+        where b.status = com.club.backend.domain.enum.BookingStatus.UPCOMING
+          and b.startAt <= :now
+    """)
+    fun activateStarted(@Param("now") now: LocalDateTime): Int
+
+    /** Переводит ACTIVE → DONE для броней, у которых endAt уже прошёл. */
+    @Modifying
+    @Query("""
+        update BookingEntity b
+        set b.status = com.club.backend.domain.enum.BookingStatus.DONE,
+            b.updatedAt = :now
+        where b.status = com.club.backend.domain.enum.BookingStatus.ACTIVE
+          and b.endAt <= :now
+    """)
+    fun completeFinished(@Param("now") now: LocalDateTime): Int
+
+    /** Отменяет все UPCOMING/ACTIVE брони заказа одним UPDATE-запросом. */
+    @Modifying
+    @Query("""
+        update BookingEntity b
+        set b.status = com.club.backend.domain.enum.BookingStatus.CANCELED
+        where b.purchase.id = :purchaseId
+          and b.status in (
+              com.club.backend.domain.enum.BookingStatus.UPCOMING,
+              com.club.backend.domain.enum.BookingStatus.ACTIVE
+          )
+    """)
+    fun cancelByPurchaseId(@Param("purchaseId") purchaseId: Long): Int
 
     @Query("SELECT COUNT(b) FROM BookingEntity b WHERE b.club.id = :clubId AND b.status = :status")
     fun countByClubIdAndStatus(

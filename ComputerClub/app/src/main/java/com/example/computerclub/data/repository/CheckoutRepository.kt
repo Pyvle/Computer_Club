@@ -15,4 +15,6 @@ class CheckoutRepository(private val api: CheckoutApi) {
     suspend fun getPurchaseDetails(id: Long): PurchaseDetailsDto = api.getPurchaseDetails(id)
 
     suspend fun payPurchase(id: Long): PurchaseListItemDto = api.payPurchase(id)
+
+    suspend fun cancelPurchase(id: Long): PurchaseListItemDto = api.cancelPurchase(id)
 }

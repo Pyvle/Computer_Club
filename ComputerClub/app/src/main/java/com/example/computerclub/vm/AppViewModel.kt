@@ -285,10 +285,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // даже если сервер не ответил — локально всё равно выходим
             } finally {
                 user = null
-                // local cache
                 shopCategories = emptyList()
                 shopProducts = emptyList()
                 purchaseHistory.clear()
+                clearAllCarts()
+                // перезагружаем клубы через публичный /clubs без blocked-статусов,
+                // чтобы не показывать "Заблокирован" после выхода
+                loadClubs(force = true)
             }
         }
     }
@@ -339,7 +342,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Загружает категории и меню клуба с сервера. */
     fun loadShopData(force: Boolean = false) {
         val clubIdLong = selectedClubIdLongOrNull() ?: return
-        if (user == null) return
         if (!force && shopCategories.isNotEmpty() && shopProducts.isNotEmpty()) return
         if (shopLoading) return
 
@@ -403,7 +405,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Загружает места клуба и рассчитывает доступность для текущего интервала брони. */
     fun loadSeatsAndAvailability(force: Boolean = false) {
         val clubIdLong = selectedClubIdLongOrNull() ?: return
-        if (user == null) return
 
         // если изменилось только время — перезагрузку мест пропускаем, обновляем только доступность
         val shouldLoadSeats = force || clubSeats.isEmpty()
@@ -1076,6 +1077,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun cancelPurchase(purchaseId: Long, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                checkoutRepo.cancelPurchase(purchaseId)
+                loadPurchaseHistory()
+                // сразу сбрасываем локальный кэш занятости и корзины — иначе экран мест
+                // покажет место как занятое (launchSingleTop не перезапускает LaunchedEffect)
+                busySeatIds = emptySet()
+                cartFor(selectedClubId).bookingLines.clear()
+                // затем обновляем с сервера (если клуб выбран)
+                loadSeatsAndAvailability(force = true)
+                syncCartProducts(force = true)
+                onSuccess()
+            } catch (e: Exception) {
+                onError(e.message ?: "Ошибка отмены")
+            }
+        }
+    }
+
     private fun PurchaseDetailsDto.toPurchase(clubs: List<Club>): Purchase {
         val clubName = clubs.firstOrNull { it.id == clubId.toString() }?.name ?: "Клуб"
         val createdAtDt = LocalDateTime.parse(createdAt)
@@ -1463,9 +1483,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ensureSelectedClubValid()
             } catch (e: Exception) {
                 clubsError = e.message ?: "Не удалось загрузить клубы"
-                // временный fallback, чтобы UI не был пустым при проблемах
-                clubs = FakeData.clubs
-                ensureSelectedClubValid()
             } finally {
                 clubsLoading = false
             }

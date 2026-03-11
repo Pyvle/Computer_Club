@@ -54,4 +54,8 @@ class CheckoutController(
     @PostMapping("/purchases/{id}/pay")
     fun pay(@PathVariable("id") id: Long): PurchaseListItemResponse =
         checkoutService.pay(currentUserId(), id)
+
+    @PostMapping("/purchases/{id}/cancel")
+    fun cancel(@PathVariable("id") id: Long): PurchaseListItemResponse =
+        checkoutService.cancel(currentUserId(), id)
 }

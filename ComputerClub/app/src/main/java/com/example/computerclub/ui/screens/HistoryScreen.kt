@@ -13,6 +13,7 @@ import com.example.computerclub.model.*
 import com.example.computerclub.vm.AppViewModel
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 
 @Composable
 fun HistoryScreen(appVm: AppViewModel) {
@@ -27,11 +28,19 @@ fun HistoryScreen(appVm: AppViewModel) {
 
     var tab by remember { mutableStateOf(0) }
 
-    val now = remember { LocalDateTime.now() }
+    var now by remember { mutableStateOf(LocalDateTime.now()) }
+    // обновляем каждую минуту, чтобы статус брони менялся без перезахода на экран
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            now = LocalDateTime.now()
+        }
+    }
+
     val all = appVm.purchaseHistory
 
     // активное: есть будущая/активная бронь или заказ товаров не готов
-    val active = remember(all.size) {
+    val active = remember(all.size, now) {
         all.filter { p ->
             val hasActiveBooking = p.bookingOrders.any { bookingStatus(now, it) != BookingStatus.DONE && bookingStatus(now, it) != BookingStatus.CANCELED }
             val productsActive = p.productOrder?.status == ProductOrderStatus.NOT_READY
@@ -39,7 +48,7 @@ fun HistoryScreen(appVm: AppViewModel) {
         }
     }
 
-    val past = remember(all.size) {
+    val past = remember(all.size, now) {
         all.filterNot { active.contains(it) }
     }
 
@@ -76,6 +85,25 @@ fun HistoryScreen(appVm: AppViewModel) {
 
 @Composable
 private fun PurchaseCard(purchase: Purchase, now: LocalDateTime, appVm: AppViewModel) {
+    var showCancelDialog by remember { mutableStateOf(false) }
+
+    if (showCancelDialog) {
+        AlertDialog(
+            onDismissRequest = { showCancelDialog = false },
+            title = { Text("Отменить заказ?") },
+            text = { Text("Все бронирования будут отменены и места освобождены.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCancelDialog = false
+                    appVm.cancelPurchase(purchase.id.toLong(), {}, {})
+                }) { Text("Отменить заказ") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelDialog = false }) { Text("Назад") }
+            }
+        )
+    }
+
     Card {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -126,12 +154,25 @@ private fun PurchaseCard(purchase: Purchase, now: LocalDateTime, appVm: AppViewM
 
             Divider()
             Text("Итого: ${purchase.totalRub} ₽", style = MaterialTheme.typography.titleMedium)
+
+            val canCancel = purchase.paymentStatus != "CANCELED" &&
+                purchase.bookingOrders.any { bookingStatus(now, it) == BookingStatus.UPCOMING }
+
             if (purchase.paymentStatus == "CREATED") {
                 Button(
                     onClick = { appVm.payPurchase(purchase.id.toLong(), {}, {}) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Оплатить")
+                }
+            }
+
+            if (canCancel) {
+                OutlinedButton(
+                    onClick = { showCancelDialog = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Отменить бронь")
                 }
             }
         }

@@ -27,7 +27,15 @@ class SecurityConfig(
                     "/swagger-ui/**",
                     "/swagger-ui.html",
                     "/api/v1/auth/**",
-                    "/api/v1/admin/auth/login"
+                    "/api/v1/admin/auth/login",
+                    // публичный каталог — просмотр без авторизации
+                    "/api/v1/clubs",
+                    "/api/v1/product-categories",
+                    "/api/v1/clubs/*/products",
+                    "/api/v1/clubs/*/seats",
+                    "/api/v1/clubs/*/seats/availability",
+                    "/api/v1/clubs/*/floorplan",
+                    "/api/v1/clubs/*/floorplan-with-availability"
                 ).permitAll()
 
                 it.anyRequest().authenticated()

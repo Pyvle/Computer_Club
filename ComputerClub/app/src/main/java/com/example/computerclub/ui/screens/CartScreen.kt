@@ -20,7 +20,8 @@ import kotlinx.coroutines.launch
 fun CartScreen(
     appVm: AppViewModel,
     onEditBooking: (String) -> Unit,
-    onPaid: () -> Unit
+    onPaid: () -> Unit,
+    onLoginRequired: () -> Unit
 ) {
     val club = remember(appVm.selectedClubId, appVm.clubs) {
         appVm.clubs.firstOrNull { it.id == appVm.selectedClubId }
@@ -31,13 +32,6 @@ fun CartScreen(
         if (appVm.user != null && club != null && !club.isBlocked) {
             appVm.syncCartProducts(force = false)
         }
-    }
-
-    if (appVm.user == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Войдите, чтобы увидеть корзину")
-        }
-        return
     }
 
     if (club?.isBlocked == true) {
@@ -276,19 +270,23 @@ fun CartScreen(
         ) {
             Button(
                 onClick = {
-                    appVm.checkoutServer(
-                        onSuccess = { onPaid() },
-                        onError = { msg ->
-                            scope.launch { snackbarHostState.showSnackbar(msg) }
-                        }
-                    )
+                    if (appVm.user == null) {
+                        onLoginRequired()
+                    } else {
+                        appVm.checkoutServer(
+                            onSuccess = { onPaid() },
+                            onError = { msg ->
+                                scope.launch { snackbarHostState.showSnackbar(msg) }
+                            }
+                        )
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
                     .height(52.dp)
             ) {
-                Text("Оплатить")
+                Text(if (appVm.user == null) "Войдите для оплаты" else "Оплатить")
             }
         }
     }

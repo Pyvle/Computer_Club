@@ -109,6 +109,10 @@ class ClubReportsService(
         }
         purchase.paymentStatus = PaymentStatus.CANCELED
         purchaseRepository.save(purchase)
+
+        // отменяем все UPCOMING/ACTIVE брони заказа одним запросом
+        bookingRepository.cancelByPurchaseId(purchase.id!!)
+
         return purchase.toDtoSimple()
     }
 

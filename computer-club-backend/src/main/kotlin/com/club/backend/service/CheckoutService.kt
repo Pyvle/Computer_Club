@@ -261,6 +261,32 @@ class CheckoutService(
     }
 
     @Transactional
+    fun cancel(userId: Long, purchaseId: Long): PurchaseListItemResponse {
+        val purchase = purchaseRepository.findById(purchaseId)
+            .orElseThrow { ResponseStatusException(HttpStatus.NOT_FOUND, "Purchase not found") }
+        if (purchase.user.id != userId)
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden")
+        if (purchase.paymentStatus == PaymentStatus.CANCELED)
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Already cancelled")
+
+        purchase.paymentStatus = PaymentStatus.CANCELED
+        purchaseRepository.save(purchase)
+
+        // освобождаем места — отменяем все UPCOMING/ACTIVE брони одним запросом
+        bookingRepository.cancelByPurchaseId(purchaseId)
+
+        return PurchaseListItemResponse(
+            purchaseId = purchase.id!!,
+            clubId = purchase.club.id!!,
+            createdAt = purchase.createdAt.toString(),
+            bookingTotalRub = purchase.bookingTotalRub,
+            productsTotalRub = purchase.productsTotalRub,
+            totalRub = purchase.totalRub,
+            paymentStatus = purchase.paymentStatus.name
+        )
+    }
+
+    @Transactional
     fun pay(userId: Long, purchaseId: Long): PurchaseListItemResponse {
         val purchase = purchaseRepository.findById(purchaseId)
             .orElseThrow { ResponseStatusException(HttpStatus.NOT_FOUND, "Purchase not found") }

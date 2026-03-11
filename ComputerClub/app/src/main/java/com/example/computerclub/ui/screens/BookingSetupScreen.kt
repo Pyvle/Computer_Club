@@ -26,7 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.example.computerclub.data.FakeData
 import com.example.computerclub.vm.AppViewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -71,7 +70,6 @@ fun BookingSetupScreen(
     val draft = appVm.bookingDraft
     val club = remember(draft.clubId, appVm.clubs) {
         appVm.clubs.firstOrNull { it.id == draft.clubId }
-            ?: FakeData.clubs.first { it.id == draft.clubId }
     }
 
     // загружаем места и доступность — нужно для "Быстрой брони"
@@ -203,12 +201,12 @@ fun BookingSetupScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(club.name, style = MaterialTheme.typography.titleMedium)
-                        Text(club.address, style = MaterialTheme.typography.bodyMedium)
+                        Text(club?.name ?: "Клуб", style = MaterialTheme.typography.titleMedium)
+                        Text(club?.address ?: "", style = MaterialTheme.typography.bodyMedium)
                     }
-                    IconButton(onClick = { appVm.toggleFavoriteClub(club.id) }) {
+                    IconButton(onClick = { club?.let { appVm.toggleFavoriteClub(it.id) } }) {
                         Icon(
-                            imageVector = if (appVm.isFavoriteClub(club.id))
+                            imageVector = if (club != null && appVm.isFavoriteClub(club.id))
                                 Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                             contentDescription = "Избранное"
                         )
