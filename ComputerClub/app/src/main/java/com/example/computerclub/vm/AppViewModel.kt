@@ -485,10 +485,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         planH: Int,
         gridSize: Int
     ): List<FloorplanSeatPos> {
-        if (planW <= 0 || planH <= 0) return emptyList()
+        if (planW <= 0 || planH <= 0 || gridSize <= 0) return emptyList()
 
         val root = runCatching { data.jsonObject }.getOrNull() ?: return emptyList()
         val items = root["items"]?.let { runCatching { it.jsonArray }.getOrNull() } ?: return emptyList()
+
+        val numCols = planW / gridSize
+        val numRows = planH / gridSize
+        if (numCols <= 0 || numRows <= 0) return emptyList()
 
         fun JsonObject.num(vararg keys: String): Double? {
             for (k in keys) {
@@ -496,9 +500,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val prim = runCatching { el.jsonPrimitive }.getOrNull() ?: continue
                 val v = prim.doubleOrNull
                 if (v != null) return v
-                // иногда числа прилетают строкой
-                val s = prim.contentOrNull
-                val v2 = s?.toDoubleOrNull()
+                val v2 = prim.contentOrNull?.toDoubleOrNull()
                 if (v2 != null) return v2
             }
             return null
@@ -511,22 +513,34 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         for (it in items) {
             val obj = runCatching { it.jsonObject }.getOrNull() ?: continue
-            val type = obj.str("type") ?: continue
-            if (type != "SEAT") continue
-
+            if (obj.str("type") != "SEAT") continue
             val seatId = obj.num("seatId")?.toLong() ?: continue
 
+            // новый формат: col/row
+            val col = obj.num("col")
+            val row = obj.num("row")
+            if (col != null && row != null) {
+                out += FloorplanSeatPos(
+                    seatId = seatId.toString(),
+                    x = (col / numCols.toDouble()).toFloat().coerceIn(0f, 1f),
+                    y = (row / numRows.toDouble()).toFloat().coerceIn(0f, 1f),
+                    w = (1f / numCols).coerceIn(0.001f, 1f),
+                    h = (1f / numRows).coerceIn(0.001f, 1f)
+                )
+                continue
+            }
+
+            // старый формат: x/y/w/h (абсолютные пиксели или дроби)
             val x = obj.num("x", "left") ?: 0.0
             val y = obj.num("y", "top") ?: 0.0
             val w = obj.num("w", "width", "size") ?: gridSize.toDouble().coerceAtLeast(1.0)
             val h = obj.num("h", "height") ?: w
-
             out += FloorplanSeatPos(
                 seatId = seatId.toString(),
                 x = (x / planW.toDouble()).toFloat().coerceIn(0f, 1f),
                 y = (y / planH.toDouble()).toFloat().coerceIn(0f, 1f),
-                w = (w / planW.toDouble()).toFloat().coerceIn(0.01f, 1f),
-                h = (h / planH.toDouble()).toFloat().coerceIn(0.01f, 1f)
+                w = (w / planW.toDouble()).toFloat().coerceIn(0.001f, 1f),
+                h = (h / planH.toDouble()).toFloat().coerceIn(0.001f, 1f)
             )
         }
 

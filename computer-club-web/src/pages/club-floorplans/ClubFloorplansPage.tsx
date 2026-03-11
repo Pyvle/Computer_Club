@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   Button,
@@ -15,7 +15,7 @@ import {
   App,
   Spin,
 } from 'antd'
-import { PlusOutlined, CopyOutlined, DeleteOutlined } from '@ant-design/icons'
+import { PlusOutlined, CopyOutlined, DeleteOutlined, ExpandOutlined } from '@ant-design/icons'
 import apiClient from '../../utils/apiClient'
 import type {
   FloorplanSummaryResponse,
@@ -23,7 +23,9 @@ import type {
   CreateFloorplanRequest,
   UpdateFloorplanRequest,
   CloneFloorplanRequest,
+  AdminSeatResponse,
 } from '../../types'
+import FloorplanEditor, { type FloorplanData } from './FloorplanEditor'
 
 const STATUS_COLOR: Record<string, string> = {
   DRAFT: 'blue',
@@ -55,8 +57,10 @@ export default function ClubFloorplansPage() {
   const [selected, setSelected] = useState<FloorplanResponse | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
-  // JSON editor state
-  const [jsonText, setJsonText] = useState('')
+  const [seats, setSeats] = useState<AdminSeatResponse[]>([])
+
+  // holds latest editor data between renders; only read at save time
+  const currentData = useRef<unknown>(null)
 
   // Create modal
   const [createOpen, setCreateOpen] = useState(false)
@@ -68,6 +72,11 @@ export default function ClubFloorplansPage() {
   const [cloneSubmitting, setCloneSubmitting] = useState(false)
   const [cloneForm] = Form.useForm<{ name: string }>()
 
+  // Resize modal
+  const [resizeOpen, setResizeOpen] = useState(false)
+  const [resizeSubmitting, setResizeSubmitting] = useState(false)
+  const [resizeForm] = Form.useForm<{ width: number; height: number; gridSize: number }>()
+
   // Action loading states
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
@@ -78,7 +87,7 @@ export default function ClubFloorplansPage() {
     setListLoading(true)
     try {
       const { data } = await apiClient.get<FloorplanSummaryResponse[]>(
-        `/admin/clubs/${clubId}/floorplans`
+        `/admin/clubs/${clubId}/floorplans`,
       )
       setList(data)
     } catch {
@@ -92,10 +101,10 @@ export default function ClubFloorplansPage() {
     setDetailLoading(true)
     try {
       const { data } = await apiClient.get<FloorplanResponse>(
-        `/admin/clubs/${clubId}/floorplans/${id}`
+        `/admin/clubs/${clubId}/floorplans/${id}`,
       )
       setSelected(data)
-      setJsonText(JSON.stringify(data.data, null, 2))
+      currentData.current = data.data
     } catch {
       message.error('Не удалось загрузить схему')
     } finally {
@@ -105,6 +114,13 @@ export default function ClubFloorplansPage() {
 
   useEffect(() => {
     fetchList()
+    // load seats once for this club — needed by the editor seat picker
+    apiClient
+      .get<AdminSeatResponse[]>(`/admin/clubs/${clubId}/seats`)
+      .then((r) => setSeats(r.data))
+      .catch(() => {
+        /* seats are optional — editor still works, just won't show labels */
+      })
   }, [clubId])
 
   async function onSelectItem(id: number) {
@@ -115,7 +131,7 @@ export default function ClubFloorplansPage() {
 
   function openCreate() {
     createForm.resetFields()
-    createForm.setFieldsValue({ gridSize: 10 })
+    createForm.setFieldsValue({ gridSize: 40 })
     setCreateOpen(true)
   }
 
@@ -130,14 +146,15 @@ export default function ClubFloorplansPage() {
       }
       const { data } = await apiClient.post<FloorplanResponse>(
         `/admin/clubs/${clubId}/floorplans`,
-        req
+        req,
       )
       message.success('Схема создана')
       setCreateOpen(false)
       await fetchList()
       await fetchDetail(data.id)
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Ошибка')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } }
+      message.error(err?.response?.data?.message ?? 'Ошибка')
     } finally {
       setCreateSubmitting(false)
     }
@@ -147,13 +164,6 @@ export default function ClubFloorplansPage() {
 
   async function onSave() {
     if (!selected) return
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(jsonText)
-    } catch {
-      message.error('Некорректный JSON')
-      return
-    }
     setSaving(true)
     try {
       const req: UpdateFloorplanRequest = {
@@ -162,25 +172,100 @@ export default function ClubFloorplansPage() {
         height: selected.height,
         gridSize: selected.gridSize,
         version: selected.version,
-        data: parsed,
+        data: currentData.current ?? selected.data,
       }
       const { data } = await apiClient.put<FloorplanResponse>(
         `/admin/clubs/${clubId}/floorplans/${selected.id}`,
-        req
+        req,
       )
       setSelected(data)
-      setJsonText(JSON.stringify(data.data, null, 2))
+      currentData.current = data.data
       message.success('Схема сохранена')
       await fetchList()
-    } catch (e: any) {
-      if (e?.response?.status === 409) {
-        message.error('Схема была изменена. Обновите страницу.')
+    } catch (e: unknown) {
+      const err = e as { response?: { status?: number; data?: { message?: string } } }
+      if (err?.response?.status === 409) {
+        message.error('Схема была изменена другим пользователем. Обновите страницу.')
         await fetchDetail(selected.id)
       } else {
-        message.error(e?.response?.data?.message ?? 'Ошибка')
+        message.error(err?.response?.data?.message ?? 'Ошибка')
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  // --- Resize ---
+
+  function openResize() {
+    if (!selected) return
+    resizeForm.setFieldsValue({
+      width: selected.width,
+      height: selected.height,
+      gridSize: selected.gridSize,
+    })
+    setResizeOpen(true)
+  }
+
+  async function onResizeSubmit(values: { width: number; height: number; gridSize: number }) {
+    if (!selected) return
+    setResizeSubmitting(true)
+    try {
+      const existingData = currentData.current ?? selected.data
+      // убираем места, которые выходят за пределы новой сетки
+      const newCols = Math.floor(values.width / values.gridSize)
+      const newRows = Math.floor(values.height / values.gridSize)
+      let filteredData = existingData
+      if (existingData && typeof existingData === 'object') {
+        const d = existingData as { items?: unknown[] }
+        if (Array.isArray(d.items)) {
+          const items = d.items.filter((it: unknown) => {
+            const item = it as { col?: number; row?: number; x?: number; y?: number; w?: number }
+            // новый формат: col/row напрямую
+            if (typeof item.col === 'number' && typeof item.row === 'number') {
+              return item.col < newCols && item.row < newRows
+            }
+            // старый формат: x/y/w/h
+            if (typeof item.x !== 'number' || typeof item.y !== 'number') return false
+            const isAbsolute = typeof item.w === 'number' && item.w >= 1
+            const col = isAbsolute
+              ? Math.round(item.x / selected.gridSize)
+              : Math.round((item.x * selected.width) / selected.gridSize)
+            const row = isAbsolute
+              ? Math.round(item.y / selected.gridSize)
+              : Math.round((item.y * selected.height) / selected.gridSize)
+            return col < newCols && row < newRows
+          })
+          filteredData = { ...d, items }
+        }
+      }
+      const req: UpdateFloorplanRequest = {
+        name: selected.name,
+        width: values.width,
+        height: values.height,
+        gridSize: values.gridSize,
+        version: selected.version,
+        data: filteredData,
+      }
+      const { data } = await apiClient.put<FloorplanResponse>(
+        `/admin/clubs/${clubId}/floorplans/${selected.id}`,
+        req,
+      )
+      setSelected(data)
+      currentData.current = data.data
+      message.success('Размер схемы изменён')
+      setResizeOpen(false)
+      await fetchList()
+    } catch (e: unknown) {
+      const err = e as { response?: { status?: number; data?: { message?: string } } }
+      if (err?.response?.status === 409) {
+        message.error('Конфликт версий — обновите страницу')
+        await fetchDetail(selected.id)
+      } else {
+        message.error(err?.response?.data?.message ?? 'Ошибка')
+      }
+    } finally {
+      setResizeSubmitting(false)
     }
   }
 
@@ -194,8 +279,9 @@ export default function ClubFloorplansPage() {
       message.success('Схема опубликована')
       await fetchList()
       await fetchDetail(selected.id)
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Ошибка')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } }
+      message.error(err?.response?.data?.message ?? 'Ошибка')
     } finally {
       setPublishing(false)
     }
@@ -211,8 +297,9 @@ export default function ClubFloorplansPage() {
       message.success('Публикация снята')
       await fetchList()
       await fetchDetail(selected.id)
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Ошибка')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } }
+      message.error(err?.response?.data?.message ?? 'Ошибка')
     } finally {
       setUnpublishing(false)
     }
@@ -233,14 +320,15 @@ export default function ClubFloorplansPage() {
       const req: CloneFloorplanRequest = { name: values.name }
       const { data } = await apiClient.post<FloorplanResponse>(
         `/admin/clubs/${clubId}/floorplans/${selected.id}/clone`,
-        req
+        req,
       )
       message.success('Схема клонирована')
       setCloneOpen(false)
       await fetchList()
       await fetchDetail(data.id)
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Ошибка')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } }
+      message.error(err?.response?.data?.message ?? 'Ошибка')
     } finally {
       setCloneSubmitting(false)
     }
@@ -258,23 +346,22 @@ export default function ClubFloorplansPage() {
         .get<FloorplanSummaryResponse[]>(`/admin/clubs/${clubId}/floorplans`)
         .then((r) => r.data)
       setList(updatedList)
-      // switch to first non-archived or clear
       const next = updatedList.find((f) => f.id !== selected.id && f.status !== 'ARCHIVED')
       if (next) {
         await fetchDetail(next.id)
       } else {
         setSelected(null)
-        setJsonText('')
+        currentData.current = null
       }
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Ошибка')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } }
+      message.error(err?.response?.data?.message ?? 'Ошибка')
     } finally {
       setArchiving(false)
     }
   }
 
   const displayed = showArchived ? list : list.filter((f) => f.status !== 'ARCHIVED')
-
   const isEditable = selected?.status === 'DRAFT'
 
   return (
@@ -282,8 +369,8 @@ export default function ClubFloorplansPage() {
       {/* --- Left panel --- */}
       <div
         style={{
-          width: '35%',
-          minWidth: 260,
+          width: '30%',
+          minWidth: 240,
           display: 'flex',
           flexDirection: 'column',
           border: '1px solid #f0f0f0',
@@ -411,9 +498,9 @@ export default function ClubFloorplansPage() {
               }}
             >
               <span>
-                Размер: {selected.width}×{selected.height}
+                Размер: {selected.width}×{selected.height}px
               </span>
-              <span>Сетка: {selected.gridSize}</span>
+              <span>Шаг сетки: {selected.gridSize}px</span>
               <span>Версия: {selected.version}</span>
               <span>Обновлено: {new Date(selected.updatedAt).toLocaleString('ru-RU')}</span>
             </div>
@@ -429,12 +516,14 @@ export default function ClubFloorplansPage() {
               }}
             >
               {selected.status === 'DRAFT' && (
-                <Button
-                  type="primary"
-                  loading={saving}
-                  onClick={onSave}
-                >
+                <Button type="primary" loading={saving} onClick={onSave}>
                   Сохранить
+                </Button>
+              )}
+
+              {selected.status === 'DRAFT' && (
+                <Button icon={<ExpandOutlined />} onClick={openResize}>
+                  Изменить размер
                 </Button>
               )}
 
@@ -466,25 +555,18 @@ export default function ClubFloorplansPage() {
                 Клонировать
               </Button>
 
-              {selected.status === 'DRAFT' && (
+              {(selected.status === 'DRAFT' || selected.status === 'PUBLISHED') && (
                 <Popconfirm
-                  title="Архивировать схему?"
-                  description="Схема будет недоступна для редактирования."
-                  onConfirm={onArchive}
-                  okText="Архивировать"
-                  cancelText="Отмена"
-                  okButtonProps={{ danger: true }}
-                >
-                  <Button danger icon={<DeleteOutlined />} loading={archiving}>
-                    Архивировать
-                  </Button>
-                </Popconfirm>
-              )}
-
-              {selected.status === 'PUBLISHED' && (
-                <Popconfirm
-                  title="Архивировать опубликованную схему?"
-                  description="Опубликованная схема будет архивирована и перестанет быть активной."
+                  title={
+                    selected.status === 'PUBLISHED'
+                      ? 'Архивировать опубликованную схему?'
+                      : 'Архивировать схему?'
+                  }
+                  description={
+                    selected.status === 'PUBLISHED'
+                      ? 'Схема перестанет быть активной.'
+                      : 'Схема будет недоступна для редактирования.'
+                  }
                   onConfirm={onArchive}
                   okText="Архивировать"
                   cancelText="Отмена"
@@ -497,25 +579,16 @@ export default function ClubFloorplansPage() {
               )}
             </div>
 
-            {/* JSON editor */}
-            <div style={{ flex: 1, padding: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                Данные схемы (JSON)
-              </Typography.Text>
-              <Input.TextArea
-                value={jsonText}
-                onChange={(e) => setJsonText(e.target.value)}
+            {/* Visual editor */}
+            <div style={{ flex: 1, padding: '16px 20px', overflowY: 'auto' }}>
+              <FloorplanEditor
+                key={selected.id}
+                floorplan={selected}
+                seats={seats}
                 readOnly={!isEditable}
-                disabled={selected.status === 'ARCHIVED'}
-                style={{
-                  flex: 1,
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                  resize: 'none',
-                  minHeight: 300,
-                  background: isEditable ? undefined : '#fafafa',
+                onChange={(data: FloorplanData) => {
+                  currentData.current = data
                 }}
-                autoSize={false}
               />
             </div>
           </>
@@ -554,10 +627,13 @@ export default function ClubFloorplansPage() {
             >
               <InputNumber min={1} style={{ width: 120 }} />
             </Form.Item>
-            <Form.Item name="gridSize" label="Сетка" style={{ marginBottom: 0 }}>
+            <Form.Item name="gridSize" label="Шаг сетки" style={{ marginBottom: 0 }}>
               <InputNumber min={1} style={{ width: 100 }} />
             </Form.Item>
           </Space>
+          <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
+            Например: 800×600px, шаг 40 → сетка 20×15 клеток
+          </div>
           <Button
             type="primary"
             htmlType="submit"
@@ -566,6 +642,50 @@ export default function ClubFloorplansPage() {
             style={{ marginTop: 16 }}
           >
             Создать
+          </Button>
+        </Form>
+      </Modal>
+
+      {/* Resize modal */}
+      <Modal
+        open={resizeOpen}
+        title="Изменить размер схемы"
+        footer={null}
+        onCancel={() => setResizeOpen(false)}
+      >
+        <Form layout="vertical" form={resizeForm} onFinish={onResizeSubmit}>
+          <Space style={{ width: '100%' }}>
+            <Form.Item
+              name="width"
+              label="Ширина (px)"
+              rules={[{ required: true, message: 'Укажите ширину' }]}
+              style={{ marginBottom: 0 }}
+            >
+              <InputNumber min={1} style={{ width: 120 }} />
+            </Form.Item>
+            <Form.Item
+              name="height"
+              label="Высота (px)"
+              rules={[{ required: true, message: 'Укажите высоту' }]}
+              style={{ marginBottom: 0 }}
+            >
+              <InputNumber min={1} style={{ width: 120 }} />
+            </Form.Item>
+            <Form.Item name="gridSize" label="Шаг сетки" style={{ marginBottom: 0 }}>
+              <InputNumber min={1} style={{ width: 100 }} />
+            </Form.Item>
+          </Space>
+          <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
+            Места, выходящие за новые границы, будут убраны с карты.
+          </div>
+          <Button
+            type="primary"
+            htmlType="submit"
+            block
+            loading={resizeSubmitting}
+            style={{ marginTop: 16 }}
+          >
+            Применить
           </Button>
         </Form>
       </Modal>

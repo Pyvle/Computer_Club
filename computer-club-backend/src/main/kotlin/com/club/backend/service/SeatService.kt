@@ -16,8 +16,8 @@ class SeatService(
 ) {
 
     @Transactional(readOnly = true)
-    fun getClubSeats(userId: Long, clubId: Long): List<SeatResponse> {
-        clubAccessService.ensureNotBlocked(userId, clubId)
+    fun getClubSeats(userId: Long?, clubId: Long): List<SeatResponse> {
+        if (userId != null) clubAccessService.ensureNotBlocked(userId, clubId)
         return seatRepository.findAllByClubIdAndIsActiveTrueOrderBySortOrderAscIdAsc(clubId).map {
             SeatResponse(
                 id = it.id!!,
@@ -28,8 +28,8 @@ class SeatService(
     }
 
     @Transactional(readOnly = true)
-    fun getAvailability(userId: Long, clubId: Long, startAt: LocalDateTime, endAt: LocalDateTime): List<SeatAvailabilityResponse> {
-        clubAccessService.ensureNotBlocked(userId, clubId)
+    fun getAvailability(userId: Long?, clubId: Long, startAt: LocalDateTime, endAt: LocalDateTime): List<SeatAvailabilityResponse> {
+        if (userId != null) clubAccessService.ensureNotBlocked(userId, clubId)
         require(endAt.isAfter(startAt)) { "endAt must be after startAt" }
 
         val seats = seatRepository.findAllByClubIdAndIsActiveTrueOrderBySortOrderAscIdAsc(clubId)

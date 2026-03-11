@@ -40,7 +40,7 @@ class SeatAdminController(
 
     @DeleteMapping("/{seatId}")
     @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_SEATS_MANAGE)")
-    fun archive(@PathVariable clubId: Long, @PathVariable seatId: Long) {
-        seatAdminService.archive(currentUserId(), clubId, seatId)
+    fun delete(@PathVariable clubId: Long, @PathVariable seatId: Long) {
+        seatAdminService.delete(currentUserId(), clubId, seatId)
     }
 }

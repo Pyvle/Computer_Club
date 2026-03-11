@@ -93,8 +93,8 @@ fun BookingSeatsScreen(
     // zoom/pan
     var userScale by remember { mutableStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
-    fun zoomIn() { userScale = (userScale * 1.15f).coerceIn(0.8f, 3.5f) }
-    fun zoomOut() { userScale = (userScale / 1.15f).coerceIn(0.8f, 3.5f) }
+    fun zoomIn() { userScale = (userScale * 1.15f).coerceIn(0.5f, 5f) }
+    fun zoomOut() { userScale = (userScale / 1.15f).coerceIn(0.5f, 5f) }
     fun resetView() { userScale = 1f; pan = Offset.Zero }
 
     // layout берём из опубликованной схемы (если есть) — иначе fallback на алгоритм по умолчанию
@@ -171,7 +171,6 @@ fun BookingSeatsScreen(
                             BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             RoundedCornerShape(18.dp)
                         )
-                        .background(MaterialTheme.colorScheme.surface)
                 ) {
                     val planW = maxWidth
                     val planH = maxHeight
@@ -187,26 +186,30 @@ fun BookingSeatsScreen(
                             }
                             .pointerInput(Unit) {
                                 detectTransformGestures { _, panChange, zoom, _ ->
-                                    userScale = (userScale * zoom).coerceIn(0.8f, 3.5f)
+                                    userScale = (userScale * zoom).coerceIn(0.5f, 5f)
                                     pan += panChange
                                 }
                             }
                     ) {
-                        HallBackgroundFill()
-
                         layout.forEach { p ->
                             val seat = seats.firstOrNull { it.id == p.seatId } ?: return@forEach
                             val selectedSeat = draft.selectedSeatIds.contains(seat.id)
                             // доступность приходит с сервера: любое занятое = BOOKED
                             val isBooked = appVm.busySeatIds.contains(seat.id)
 
-                            val seatW = (planW.value * p.w).dp.coerceIn(28.dp, 64.dp)
-                            val seatH = (planH.value * p.h).dp.coerceIn(28.dp, 64.dp)
+                            // естественный размер из схемы; если меньше 56dp — масштабируем и offset
+                            val naturalW = planW.value * p.w
+                            val naturalH = planH.value * p.h
+                            val seatW = naturalW.coerceIn(56f, 96f).dp
+                            val seatH = naturalH.coerceIn(56f, 96f).dp
+                            // масштаб, применённый к размеру, применяем и к отступу — иначе места перекроются
+                            val scaleX = if (naturalW > 0f) seatW.value / naturalW else 1f
+                            val scaleY = if (naturalH > 0f) seatH.value / naturalH else 1f
 
                             val baseModifier = Modifier
                                 .offset(
-                                    x = (planW.value * p.x).dp,
-                                    y = (planH.value * p.y).dp
+                                    x = (planW.value * p.x * scaleX).dp,
+                                    y = (planH.value * p.y * scaleY).dp
                                 )
                                 .size(width = seatW, height = seatH)
 
@@ -415,77 +418,6 @@ private fun MaxTimeRow(r: SeatMaxTimeRow) {
     }
 }
 
-// --- Фон ---
-
-@Composable
-private fun HallBackgroundFill() {
-    val outline = MaterialTheme.colorScheme.outlineVariant
-    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-
-    Box(Modifier.fillMaxSize().padding(12.dp)) {
-        Box(
-            Modifier.fillMaxSize()
-                .border(1.dp, outline, RoundedCornerShape(16.dp))
-        )
-
-        // VIP блок
-        Box(
-            Modifier
-                .fillMaxWidth(0.62f)
-                .fillMaxHeight(0.25f)
-                .offset(10.dp, 10.dp)
-                .border(1.dp, outline, RoundedCornerShape(14.dp))
-        )
-        Text(
-            "VIP",
-            modifier = Modifier
-                .offset(10.dp, 14.dp)
-                .fillMaxWidth(0.62f),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.labelMedium,
-            color = labelColor
-        )
-
-        // STANDARD блок
-        Box(
-            Modifier
-                .fillMaxWidth(0.80f)
-                .fillMaxHeight(0.58f)
-                .offset(10.dp, 92.dp)
-                .border(1.dp, outline, RoundedCornerShape(14.dp))
-        )
-        Text(
-            "STANDARD",
-            modifier = Modifier
-                .offset(10.dp, 96.dp)
-                .fillMaxWidth(0.80f),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.labelMedium,
-            color = labelColor
-        )
-
-        // STAFF справа
-        Box(
-            Modifier
-                .fillMaxWidth(0.18f)
-                .fillMaxHeight(0.58f)
-                .align(Alignment.CenterEnd)
-                .offset((-10).dp, 62.dp)
-                .border(1.dp, outline, RoundedCornerShape(14.dp))
-        )
-        Text(
-            "STAFF",
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .offset((-10).dp, 66.dp)
-                .fillMaxWidth(0.18f),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.labelMedium,
-            color = labelColor
-        )
-    }
-}
-
 // --- Места ---
 
 @Composable
@@ -503,6 +435,9 @@ private fun SeatSquare(
         SeatKind.FREE -> Triple(cs.surface, cs.outline, cs.onSurface)
     }
 
+    val monitorColor = if (kind == SeatKind.SELECTED) cs.onPrimary.copy(alpha = 0.85f)
+                       else cs.onSurface.copy(alpha = 0.18f)
+
     Box(
         modifier
             .clip(shape)
@@ -510,23 +445,30 @@ private fun SeatSquare(
             .border(2.dp, border, shape),
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 4.dp)
-                .size(width = 18.dp, height = 10.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(
-                    if (kind == SeatKind.SELECTED) cs.onPrimary.copy(alpha = 0.9f)
-                    else cs.onSurface.copy(alpha = 0.12f)
-                )
-        )
-        Text(
-            text = number,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = textColor
-        )
+        Column(
+            modifier = Modifier.fillMaxSize().padding(vertical = 6.dp, horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // монитор — показывает направление взгляда
+            Box(
+                Modifier
+                    .fillMaxWidth(0.72f)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(monitorColor)
+            )
+
+            // номер места
+            Text(
+                text = number,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = textColor
+            )
+
+            Spacer(Modifier.height(4.dp))
+        }
     }
 }
 

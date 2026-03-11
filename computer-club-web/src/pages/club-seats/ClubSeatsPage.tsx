@@ -108,13 +108,18 @@ export default function ClubSeatsPage() {
     }
   }
 
-  async function onArchive(seatId: number) {
+  async function onDelete(seatId: number) {
     try {
       await apiClient.delete(`/admin/clubs/${clubId}/seats/${seatId}`)
-      message.success('Место архивировано')
+      message.success('Место удалено')
       await fetchSeats()
     } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Ошибка')
+      const msg: string = e?.response?.data?.message ?? ''
+      if (msg.toLowerCase().includes('active') || msg.toLowerCase().includes('upcoming') || e?.response?.status === 409) {
+        message.error('Нельзя удалить: есть активные или предстоящие бронирования на это место')
+      } else {
+        message.error(msg || 'Ошибка при удалении')
+      }
     }
   }
 
@@ -186,10 +191,10 @@ export default function ClubSeatsPage() {
             Изменить
           </Button>
           <Popconfirm
-            title="Архивировать место?"
-            description="Место станет неактивным и не будет отображаться."
-            onConfirm={() => onArchive(row.id)}
-            okText="Архивировать"
+            title="Удалить место?"
+            description="Место будет удалено навсегда. Нельзя удалить, если есть активные бронирования."
+            onConfirm={() => onDelete(row.id)}
+            okText="Удалить"
             cancelText="Отмена"
             okButtonProps={{ danger: true }}
           >

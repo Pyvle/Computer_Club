@@ -14,20 +14,17 @@ class SeatController(
     private val seatService: SeatService
 ) {
 
-    private fun currentUserId(): Long {
-        val principal = SecurityContextHolder.getContext().authentication?.principal?.toString()
-            ?: throw IllegalArgumentException("Unauthorized")
-        return principal.toLong()
-    }
+    private fun currentUserIdOrNull(): Long? =
+        SecurityContextHolder.getContext().authentication?.principal?.toString()?.toLongOrNull()
 
     @GetMapping
     fun getSeats(@PathVariable clubId: Long): List<SeatResponse> =
-        seatService.getClubSeats(currentUserId(), clubId)
+        seatService.getClubSeats(currentUserIdOrNull(), clubId)
 
     @PostMapping("/availability")
     fun getAvailability(
         @PathVariable clubId: Long,
         @Valid @RequestBody request: SeatAvailabilityRequest
     ): List<SeatAvailabilityResponse> =
-        seatService.getAvailability(currentUserId(), clubId, request.startAt, request.endAt)
+        seatService.getAvailability(currentUserIdOrNull(), clubId, request.startAt, request.endAt)
 }
