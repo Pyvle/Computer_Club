@@ -35,6 +35,7 @@ class ProductService(
                 categoryTitle = cp.product.category.title,
                 title = cp.product.title,
                 description = cp.product.description,
+                imageUrl = cp.product.imageUrl,
                 priceRub = cp.priceRub,
                 isAvailable = cp.isAvailable
             )

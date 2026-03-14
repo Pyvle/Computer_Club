@@ -22,7 +22,10 @@ class ClubService(
                 name = it.name,
                 address = it.address,
                 locationText = it.locationText,
-                description = it.description
+                description = it.description,
+                imageUrl = it.imageUrl,
+                latitude = it.latitude,
+                longitude = it.longitude
             )
         }
     }
@@ -45,9 +48,12 @@ class ClubService(
                 address = club.address,
                 locationText = club.locationText,
                 description = club.description,
+                imageUrl = club.imageUrl,
                 isBlocked = b != null,
                 blockReason = b?.reason,
-                blockedUntil = b?.blockedUntil
+                blockedUntil = b?.blockedUntil,
+                latitude = club.latitude,
+                longitude = club.longitude
             )
         }
     }

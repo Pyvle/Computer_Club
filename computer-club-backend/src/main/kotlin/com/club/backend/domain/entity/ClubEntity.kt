@@ -28,6 +28,15 @@ class ClubEntity(
     @Column(columnDefinition = "text")
     var description: String? = null,
 
+    @Column
+    var latitude: Double? = null,
+
+    @Column
+    var longitude: Double? = null,
+
+    @Column(name = "image_url", columnDefinition = "text")
+    var imageUrl: String? = null,
+
     @Column(nullable = false)
     var isActive: Boolean = true,
 

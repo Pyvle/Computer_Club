@@ -8,7 +8,10 @@ data class AvailableClubResponse(
     val address: String,
     val locationText: String?,
     val description: String?,
+    val imageUrl: String?,
     val isBlocked: Boolean,
     val blockReason: String?,
-    val blockedUntil: LocalDateTime?
+    val blockedUntil: LocalDateTime?,
+    val latitude: Double?,
+    val longitude: Double?
 )

@@ -51,6 +51,7 @@ class ClubSettingsService(
         address = address,
         locationText = locationText,
         description = description,
+        imageUrl = imageUrl,
         isActive = isActive
     )
 }

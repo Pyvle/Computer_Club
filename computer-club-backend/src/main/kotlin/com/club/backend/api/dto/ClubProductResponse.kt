@@ -6,6 +6,7 @@ data class ClubProductResponse(
     val categoryTitle: String,
     val title: String,
     val description: String?,
+    val imageUrl: String?,
     val priceRub: Int,
     val isAvailable: Boolean
 )

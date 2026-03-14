@@ -52,6 +52,7 @@ data class Product(
     val title: String,
     val price: Int,
     val description: String,
+    val imageUrl: String? = null,
     val variants: List<String> = emptyList()
 )
 
@@ -101,30 +102,20 @@ data class BookingDraft(
     val selectedSeatIds: Set<String> = emptySet()
 )
 
-data class CurrentSessionSummary(
-    val clubName: String,
-    val seatLabels: List<String>,
-    val startLabel: String,
-    val endLabel: String,
-    val remainingLabel: String
-)
-
-data class AppNotification(
-    val id: String,
-    val title: String,
-    val text: String
-)
-
 data class Club(
     val id: String,
     val name: String,
     val location: String,
     val address: String,
     val description: String,
+    val imageUrl: String? = null,
 
     // из /clubs/available
     val isBlocked: Boolean = false,
-    val blockReason: String? = null
+    val blockReason: String? = null,
+
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 // --- Orders / History ---

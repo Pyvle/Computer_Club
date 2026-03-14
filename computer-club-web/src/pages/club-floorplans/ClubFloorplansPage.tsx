@@ -6,6 +6,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Select,
   Tag,
   Popconfirm,
   Space,
@@ -25,7 +26,7 @@ import type {
   CloneFloorplanRequest,
   AdminSeatResponse,
 } from '../../types'
-import FloorplanEditor, { type FloorplanData } from './FloorplanEditor'
+import FloorplanEditor, { type FloorplanData, DEFAULT_COLS, DEFAULT_ROWS } from './FloorplanEditor'
 
 const STATUS_COLOR: Record<string, string> = {
   DRAFT: 'blue',
@@ -41,8 +42,6 @@ const STATUS_LABEL: Record<string, string> = {
 
 interface CreateForm {
   name: string
-  width: number
-  height: number
   gridSize: number
 }
 
@@ -131,18 +130,19 @@ export default function ClubFloorplansPage() {
 
   function openCreate() {
     createForm.resetFields()
-    createForm.setFieldsValue({ gridSize: 40 })
+    createForm.setFieldsValue({ gridSize: 40, name: '' })
     setCreateOpen(true)
   }
 
   async function onCreateSubmit(values: CreateForm) {
     setCreateSubmitting(true)
     try {
+      const gridSize = values.gridSize ?? 40
       const req: CreateFloorplanRequest = {
         name: values.name,
-        width: values.width,
-        height: values.height,
-        gridSize: values.gridSize,
+        width: DEFAULT_COLS * gridSize,
+        height: DEFAULT_ROWS * gridSize,
+        gridSize,
       }
       const { data } = await apiClient.post<FloorplanResponse>(
         `/admin/clubs/${clubId}/floorplans`,
@@ -610,29 +610,17 @@ export default function ClubFloorplansPage() {
           >
             <Input autoFocus placeholder="Главный зал" />
           </Form.Item>
-          <Space style={{ width: '100%' }}>
-            <Form.Item
-              name="width"
-              label="Ширина (px)"
-              rules={[{ required: true, message: 'Укажите ширину' }]}
-              style={{ marginBottom: 0 }}
-            >
-              <InputNumber min={1} style={{ width: 120 }} />
-            </Form.Item>
-            <Form.Item
-              name="height"
-              label="Высота (px)"
-              rules={[{ required: true, message: 'Укажите высоту' }]}
-              style={{ marginBottom: 0 }}
-            >
-              <InputNumber min={1} style={{ width: 120 }} />
-            </Form.Item>
-            <Form.Item name="gridSize" label="Шаг сетки" style={{ marginBottom: 0 }}>
-              <InputNumber min={1} style={{ width: 100 }} />
-            </Form.Item>
-          </Space>
-          <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
-            Например: 800×600px, шаг 40 → сетка 20×15 клеток
+          <Form.Item name="gridSize" label="Размер ячейки">
+            <Select
+              options={[
+                { value: 30, label: 'Мелкая (30px) — больше ячеек' },
+                { value: 40, label: 'Средняя (40px)' },
+                { value: 60, label: 'Крупная (60px) — меньше ячеек' },
+              ]}
+            />
+          </Form.Item>
+          <div style={{ fontSize: 12, color: '#888', marginTop: -8, marginBottom: 16 }}>
+            Сетка {DEFAULT_COLS}×{DEFAULT_ROWS} ячеек. Нарисуйте комнаты инструментом «Комната».
           </div>
           <Button
             type="primary"

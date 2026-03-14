@@ -13,9 +13,12 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
+  Upload,
 } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons'
+import type { UploadRequestOption } from 'rc-upload/lib/interface'
 import type { ColumnsType } from 'antd/es/table'
 import apiClient from '../../utils/apiClient'
 import type {
@@ -215,8 +218,52 @@ export default function GlobalCatalogPage() {
     },
   ]
 
+  function makeProductImageUploader(productId: number) {
+    return async (options: UploadRequestOption) => {
+      const formData = new FormData()
+      formData.append('file', options.file as File)
+      try {
+        const res = await apiClient.post<{ imageUrl: string }>(
+          `/admin/global/catalog/products/${productId}/image`,
+          formData,
+          { headers: { 'Content-Type': 'multipart/form-data' } },
+        )
+        setProducts((prev) =>
+          prev.map((p) => (p.id === productId ? { ...p, imageUrl: res.data.imageUrl } : p)),
+        )
+        message.success('Изображение загружено')
+        options.onSuccess?.(res.data)
+      } catch {
+        message.error('Не удалось загрузить изображение')
+        options.onError?.(new Error('Upload failed'))
+      }
+    }
+  }
+
   const productColumns: ColumnsType<AdminProductResponse> = [
     { title: 'ID', dataIndex: 'id', width: 60 },
+    {
+      title: 'Фото',
+      dataIndex: 'imageUrl',
+      width: 72,
+      render: (url: string | null, record) => (
+        <Upload accept="image/*" showUploadList={false} customRequest={makeProductImageUploader(record.id)}>
+          {url ? (
+            <Tooltip title="Нажмите, чтобы заменить">
+              <img
+                src={url}
+                alt="фото"
+                style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, cursor: 'pointer', border: '1px solid #f0f0f0' }}
+              />
+            </Tooltip>
+          ) : (
+            <Tooltip title="Загрузить фото">
+              <Button icon={<UploadOutlined />} size="small" />
+            </Tooltip>
+          )}
+        </Upload>
+      ),
+    },
     {
       title: 'Категория',
       dataIndex: 'categoryId',

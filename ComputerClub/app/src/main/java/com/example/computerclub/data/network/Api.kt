@@ -111,6 +111,17 @@ interface SeatApi {
     ): List<SeatAvailabilityResponseDto>
 }
 
+interface FavoritesApi {
+    @GET("/api/v1/me/favorites")
+    suspend fun getFavorites(): List<Long>
+
+    @PUT("/api/v1/me/favorites/{clubId}")
+    suspend fun addFavorite(@Path("clubId") clubId: Long)
+
+    @DELETE("/api/v1/me/favorites/{clubId}")
+    suspend fun removeFavorite(@Path("clubId") clubId: Long)
+}
+
 interface FloorplanApi {
     @GET("/api/v1/clubs/{clubId}/floorplan")
     suspend fun getPublished(@Path("clubId") clubId: Long): FloorplanResponseDto

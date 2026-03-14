@@ -6,6 +6,7 @@ data class ClubSettingsResponse(
     val address: String,
     val locationText: String?,
     val description: String?,
+    val imageUrl: String?,
     val isActive: Boolean
 )
 

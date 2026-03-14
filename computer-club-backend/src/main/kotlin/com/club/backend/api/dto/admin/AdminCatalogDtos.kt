@@ -16,6 +16,7 @@ data class AdminProductResponse(
     val categoryId: Long,
     val title: String,
     val description: String?,
+    val imageUrl: String?,
     val isActive: Boolean
 )
 
@@ -24,6 +25,7 @@ data class AdminClubCatalogProductResponse(
     val categoryId: Long,
     val productTitle: String,
     val description: String?,
+    val imageUrl: String?,
     val productIsActive: Boolean,
     val isLinkedToClub: Boolean,
     val clubPriceRub: Int?,

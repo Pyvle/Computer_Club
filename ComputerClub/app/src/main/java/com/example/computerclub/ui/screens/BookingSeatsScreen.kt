@@ -27,6 +27,10 @@ import com.example.computerclub.model.Seat
 import com.example.computerclub.model.SeatAvailability
 import com.example.computerclub.model.SeatType
 import com.example.computerclub.model.FloorplanSeatPos
+import com.example.computerclub.model.FloorplanFloorPos
+import com.example.computerclub.model.FloorplanWallPos
+import com.example.computerclub.model.WallOrientation
+import androidx.compose.ui.graphics.Color
 import com.example.computerclub.model.TimeRange
 import com.example.computerclub.vm.AppViewModel
 import kotlinx.coroutines.launch
@@ -101,13 +105,15 @@ fun BookingSeatsScreen(
     val layout: List<FloorplanSeatPos> = remember(seats, appVm.floorplanSeats) {
         if (appVm.floorplanSeats.isNotEmpty()) appVm.floorplanSeats else buildLayoutPercent(seats)
     }
+    val walls: List<FloorplanWallPos> = appVm.floorplanWalls
+    val floor: List<FloorplanFloorPos> = appVm.floorplanFloor
 
     // --- нижние шторки ---
     var sheetKind by remember { mutableStateOf<SeatsSheetKind?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // --- подготовка данных для шторки “макс. время” ---
-    val startMinOfDay = draft.startMin // достаточно минут дня (FakeData без даты)
+    val startMinOfDay = draft.startMin
     val maxTimeRows by remember(seats, startMinOfDay, appVm.busySeatIds) {
         mutableStateOf(buildMaxTimeRows(seats, startMinOfDay, appVm.busySeatIds))
     }
@@ -191,6 +197,61 @@ fun BookingSeatsScreen(
                                 }
                             }
                     ) {
+                        // пол комнат — под стенами и местами
+                        val numCols = appVm.floorplanNumCols
+                        val numRows = appVm.floorplanNumRows
+                        if ((floor.isNotEmpty() || walls.isNotEmpty()) && numCols > 0 && numRows > 0) {
+                            val naturalCellW = planW.value / numCols
+                            val naturalCellH = planH.value / numRows
+                            val scaledCellW = naturalCellW.coerceIn(56f, 96f)
+                            val scaledCellH = naturalCellH.coerceIn(56f, 96f)
+
+                            floor.forEach { f ->
+                                val bg = if (f.roomType == "VIP") Color(0xFFFFF3CD) else Color(0xFFF5F5F5)
+                                Box(
+                                    Modifier
+                                        .offset(
+                                            x = (f.col * scaledCellW).dp,
+                                            y = (f.row * scaledCellH).dp
+                                        )
+                                        .size(width = scaledCellW.dp, height = scaledCellH.dp)
+                                        .background(bg)
+                                )
+                            }
+                        }
+                        if (walls.isNotEmpty() && numCols > 0 && numRows > 0) {
+                            val naturalCellW = planW.value / numCols
+                            val naturalCellH = planH.value / numRows
+                            val scaledCellW = naturalCellW.coerceIn(56f, 96f)
+                            val scaledCellH = naturalCellH.coerceIn(56f, 96f)
+                            val wallThickness = 4f
+
+                            walls.forEach { w ->
+                                when (w.orientation) {
+                                    WallOrientation.H -> Box(
+                                        Modifier
+                                            .offset(
+                                                x = (w.col * scaledCellW).dp,
+                                                y = (w.row * scaledCellH - wallThickness / 2).dp
+                                            )
+                                            .size(width = scaledCellW.dp, height = wallThickness.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                    )
+                                    WallOrientation.V -> Box(
+                                        Modifier
+                                            .offset(
+                                                x = (w.col * scaledCellW - wallThickness / 2).dp,
+                                                y = (w.row * scaledCellH).dp
+                                            )
+                                            .size(width = wallThickness.dp, height = scaledCellH.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                    )
+                                }
+                            }
+                        }
+
                         layout.forEach { p ->
                             val seat = seats.firstOrNull { it.id == p.seatId } ?: return@forEach
                             val selectedSeat = draft.selectedSeatIds.contains(seat.id)

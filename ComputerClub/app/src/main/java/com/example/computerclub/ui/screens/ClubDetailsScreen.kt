@@ -19,8 +19,9 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.Button
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import com.example.computerclub.data.FakeData
+import coil.compose.AsyncImage
 import com.example.computerclub.vm.AppViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,6 +67,18 @@ fun ClubDetailsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            if (club.imageUrl != null) {
+                Card {
+                    AsyncImage(
+                        model = club.imageUrl,
+                        contentDescription = club.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                    )
+                }
+            }
             Card {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(club.location, style = MaterialTheme.typography.labelLarge)

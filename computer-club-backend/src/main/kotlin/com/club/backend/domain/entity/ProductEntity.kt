@@ -19,6 +19,9 @@ class ProductEntity(
     @Column(columnDefinition = "text")
     var description: String? = null,
 
+    @Column(name = "image_url", columnDefinition = "text")
+    var imageUrl: String? = null,
+
     @Column(name = "is_active", nullable = false)
     var isActive: Boolean = true
 )

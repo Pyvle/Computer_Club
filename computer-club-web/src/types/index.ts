@@ -46,6 +46,7 @@ export interface AdminProductResponse {
   categoryId: number
   title: string
   description: string | null
+  imageUrl: string | null
   isActive: boolean
 }
 
@@ -327,6 +328,7 @@ export interface ClubSettingsResponse {
   address: string
   locationText: string | null
   description: string | null
+  imageUrl: string | null
   isActive: boolean
 }
 

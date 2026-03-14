@@ -16,6 +16,7 @@ data class ClubProductResponseDto(
     val categoryTitle: String,
     val title: String,
     val description: String? = null,
+    val imageUrl: String? = null,
     val priceRub: Int,
     val isAvailable: Boolean
 )

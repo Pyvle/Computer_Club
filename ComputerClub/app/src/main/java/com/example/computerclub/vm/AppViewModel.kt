@@ -6,7 +6,6 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import com.example.computerclub.data.FakeData
 import com.example.computerclub.model.*
 import com.example.computerclub.app.Routes
 import java.time.LocalDate
@@ -27,6 +26,7 @@ import com.example.computerclub.data.repository.CartRepository
 import com.example.computerclub.data.repository.CheckoutRepository
 import com.example.computerclub.data.repository.SeatRepository
 import com.example.computerclub.data.repository.FloorplanRepository
+import com.example.computerclub.data.repository.FavoritesRepository
 import com.example.computerclub.data.network.dto.CartResponseDto
 import com.example.computerclub.data.network.dto.PurchaseDetailsDto
 import retrofit2.HttpException
@@ -79,6 +79,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val checkoutRepo = CheckoutRepository(network.checkoutApi)
     private val seatRepo = SeatRepository(network.seatApi)
     private val floorplanRepo = FloorplanRepository(network.floorplanApi)
+    private val favoritesRepo = FavoritesRepository(network.favoritesApi)
 
     private fun selectedClubIdLongOrNull(): Long? =
         selectedClubId.toLongOrNull() ?: selectedClubId.removePrefix("c").toLongOrNull()
@@ -99,6 +100,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     id = me.id.toString(),
                     phone = me.phone
                 )
+                loadFavorites()
                 onSuccess()
             } catch (e: Exception) {
                 onError(e.message ?: "Не удалось загрузить профиль")
@@ -141,6 +143,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadClubs(force = true)
                 loadShopData(force = true)
                 syncCartProducts(force = true)
+                loadFavorites()
                 onSuccess()
             } catch (e: Exception) {
                 onError(e.message ?: "Неверный код или ошибка сети")
@@ -205,8 +208,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     // --- Выбор клуба ---
-    var selectedClubId: String by mutableStateOf(FakeData.clubs.first().id)
+    var selectedClubId: String by mutableStateOf("")
         private set
+
+    // флаг: для какого клуба уже выполнена первичная синхронизация корзины
+    private var cartSyncedClubId: String? = null
 
     var clubConfirmed: Boolean by mutableStateOf(false)
         private set
@@ -226,6 +232,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Позиции мест из опубликованного floorplan (0..1). Если схемы нет — список пустой. */
     var floorplanSeats: List<FloorplanSeatPos> by mutableStateOf(emptyList())
+        private set
+
+    /** Стены между ячейками из опубликованного floorplan. */
+    var floorplanWalls: List<FloorplanWallPos> by mutableStateOf(emptyList())
+        private set
+
+    /** Ячейки пола (комнаты) из опубликованного floorplan. */
+    var floorplanFloor: List<FloorplanFloorPos> by mutableStateOf(emptyList())
+        private set
+
+    /** Размеры сетки опубликованного floorplan (0 если схемы нет). */
+    var floorplanNumCols: Int by mutableStateOf(0)
+        private set
+    var floorplanNumRows: Int by mutableStateOf(0)
         private set
 
     var seatsLoading: Boolean by mutableStateOf(false)
@@ -257,10 +277,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cartLinesFor(clubId: String): SnapshotStateList<CartProductLine> = cartFor(clubId).productLines
 
-    // мок текущей сессии
-    var currentSession: CurrentSessionSummary? by mutableStateOf(null)
-        private set
-
     fun isLoggedIn(): Boolean = user != null
 
     fun setClub(clubId: String) {
@@ -273,6 +289,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         clubSeats = emptyList()
         busySeatIds = emptySet()
         seatsError = null
+        cartSyncedClubId = null
     }
 
     fun confirmClub() { clubConfirmed = true }
@@ -289,6 +306,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 shopProducts = emptyList()
                 purchaseHistory.clear()
                 clearAllCarts()
+                favoriteClubIds.clear()
+                cartSyncedClubId = null
                 // перезагружаем клубы через публичный /clubs без blocked-статусов,
                 // чтобы не показывать "Заблокирован" после выхода
                 loadClubs(force = true)
@@ -363,6 +382,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             title = it.title,
                             price = it.priceRub,
                             description = it.description ?: "",
+                            imageUrl = it.imageUrl,
                             variants = emptyList()
                         )
                     }
@@ -382,7 +402,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val clubIdLong = selectedClubIdLongOrNull() ?: return
         if (user == null) return
         if (cartSyncLoading) return
-        if (!force && cartLines.isNotEmpty() && bookingCartLines.isNotEmpty()) return
+        if (!force && cartSyncedClubId == selectedClubId) return
 
         cartSyncLoading = true
         cartSyncError = null
@@ -392,6 +412,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val cart = cartRepo.getOrCreate(clubIdLong)
                 applyServerCartProducts(cart)
                 applyServerCartBookings(cart)
+                cartSyncedClubId = selectedClubId
             } catch (e: HttpException) {
                 cartSyncError = "Ошибка корзины: ${e.code()}"
             } catch (e: Exception) {
@@ -444,11 +465,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         to = endAt.toString()
                     )
 
+                    val nCols = fp.floorplan.width / fp.floorplan.gridSize
+                    val nRows = fp.floorplan.height / fp.floorplan.gridSize
+                    floorplanNumCols = nCols
+                    floorplanNumRows = nRows
                     floorplanSeats = parseFloorplanSeatPositions(
                         data = fp.floorplan.data,
                         planW = fp.floorplan.width,
                         planH = fp.floorplan.height,
                         gridSize = fp.floorplan.gridSize
+                    )
+                    floorplanWalls = parseFloorplanWallPositions(
+                        data = fp.floorplan.data,
+                        numCols = nCols,
+                        numRows = nRows
+                    )
+                    floorplanFloor = parseFloorplanFloorPositions(
+                        data = fp.floorplan.data,
+                        numCols = nCols,
+                        numRows = nRows
                     )
 
                     // busySeatIds может прийти и как busySeatIds, и как seats[].isBusy
@@ -462,6 +497,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     if (e.code() == 404) {
                         // схемы нет — просто availability
                         floorplanSeats = emptyList()
+                        floorplanWalls = emptyList()
+                        floorplanFloor = emptyList()
+                        floorplanNumCols = 0
+                        floorplanNumRows = 0
                         val availability = seatRepo.availability(clubIdLong, startAt.toString(), endAt.toString())
                         busySeatIds = availability
                             .filter { !it.isAvailable }
@@ -547,32 +586,115 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return out.sortedBy { it.seatId.toLongOrNull() ?: Long.MAX_VALUE }
     }
 
+    private fun parseFloorplanWallPositions(
+        data: JsonElement,
+        numCols: Int,
+        numRows: Int
+    ): List<FloorplanWallPos> {
+        if (numCols <= 0 || numRows <= 0) return emptyList()
+
+        val root = runCatching { data.jsonObject }.getOrNull() ?: return emptyList()
+        val items = root["items"]?.let { runCatching { it.jsonArray }.getOrNull() } ?: return emptyList()
+
+        fun JsonObject.num(key: String): Double? {
+            val el = this[key] ?: return null
+            val prim = runCatching { el.jsonPrimitive }.getOrNull() ?: return null
+            return prim.doubleOrNull ?: prim.contentOrNull?.toDoubleOrNull()
+        }
+
+        fun JsonObject.str(key: String): String? =
+            runCatching { this[key]?.jsonPrimitive?.contentOrNull }.getOrNull()
+
+        val out = mutableListOf<FloorplanWallPos>()
+
+        for (it in items) {
+            val obj = runCatching { it.jsonObject }.getOrNull() ?: continue
+            if (obj.str("type") != "WALL") continue
+
+            val orientation = when (obj.str("orientation")) {
+                "H" -> WallOrientation.H
+                "V" -> WallOrientation.V
+                else -> continue
+            }
+            val col = obj.num("col")?.toInt() ?: continue
+            val row = obj.num("row")?.toInt() ?: continue
+
+            // H: граница между строками row-1 и row, col ∈ 0..numCols-1
+            // V: граница между столбцами col-1 и col, row ∈ 0..numRows-1
+            val valid = when (orientation) {
+                WallOrientation.H -> col in 0 until numCols && row in 1 until numRows
+                WallOrientation.V -> col in 1 until numCols && row in 0 until numRows
+            }
+            if (!valid) continue
+
+            out += FloorplanWallPos(orientation = orientation, col = col, row = row)
+        }
+
+        return out
+    }
+
+    private fun parseFloorplanFloorPositions(
+        data: JsonElement,
+        numCols: Int,
+        numRows: Int
+    ): List<FloorplanFloorPos> {
+        if (numCols <= 0 || numRows <= 0) return emptyList()
+
+        val root = runCatching { data.jsonObject }.getOrNull() ?: return emptyList()
+        val items = root["items"]?.let { runCatching { it.jsonArray }.getOrNull() } ?: return emptyList()
+
+        fun JsonObject.num(key: String): Double? {
+            val el = this[key] ?: return null
+            val prim = runCatching { el.jsonPrimitive }.getOrNull() ?: return null
+            return prim.doubleOrNull ?: prim.contentOrNull?.toDoubleOrNull()
+        }
+
+        fun JsonObject.str(key: String): String? =
+            runCatching { this[key]?.jsonPrimitive?.contentOrNull }.getOrNull()
+
+        val out = mutableListOf<FloorplanFloorPos>()
+
+        for (it in items) {
+            val obj = runCatching { it.jsonObject }.getOrNull() ?: continue
+            if (obj.str("type") != "FLOOR") continue
+            val col = obj.num("col")?.toInt() ?: continue
+            val row = obj.num("row")?.toInt() ?: continue
+            val roomType = obj.str("roomType") ?: continue
+            if (roomType != "REGULAR" && roomType != "VIP") continue
+            if (col !in 0 until numCols || row !in 0 until numRows) continue
+            out += FloorplanFloorPos(col = col, row = row, roomType = roomType)
+        }
+
+        return out
+    }
+
     fun addProduct(product: Product, variant: String?) {
+        val lines = cartFor(selectedClubId).productLines
+        val idx = lines.indexOfFirst { it.productId == product.id && it.variant == variant }
+        val prev = if (idx >= 0) lines[idx] else null
+
+        // оптимистичное обновление — UI реагирует мгновенно
+        if (idx < 0) lines.add(CartProductLine(product.id, product.title, product.price, variant, 1))
+        else lines[idx] = lines[idx].copy(qty = lines[idx].qty + 1)
+
         val clubIdLong = selectedClubIdLongOrNull()
         val productIdLong = product.id.toLongOrNull()
 
-        // сервер пока поддерживает только товары без вариантов
         if (user != null && clubIdLong != null && productIdLong != null && variant == null) {
             viewModelScope.launch {
                 try {
                     val cart = cartRepo.addProduct(clubIdLong, productIdLong, 1)
                     applyServerCartProducts(cart)
                 } catch (_: Exception) {
-                    // при ошибке — обновляем локально
-                    val lines = cartFor(selectedClubId).productLines
-                    val idx = lines.indexOfFirst { it.productId == product.id && it.variant == variant }
-                    if (idx < 0) lines.add(CartProductLine(product.id, product.title, product.price, variant, 1))
-                    else lines[idx] = lines[idx].copy(qty = lines[idx].qty + 1)
+                    // откат при ошибке
+                    val rollbackIdx = lines.indexOfFirst { it.productId == product.id && it.variant == variant }
+                    if (rollbackIdx >= 0) {
+                        if (prev == null) lines.removeAt(rollbackIdx)
+                        else lines[rollbackIdx] = prev
+                    }
                 }
             }
-            return
         }
-
-        // локально/мок
-        val lines = cartFor(selectedClubId).productLines
-        val idx = lines.indexOfFirst { it.productId == product.id && it.variant == variant }
-        if (idx < 0) lines.add(CartProductLine(product.id, product.title, product.price, variant, 1))
-        else lines[idx] = lines[idx].copy(qty = lines[idx].qty + 1)
     }
 
     fun changeQty(productId: String, variant: String?, delta: Int) {
@@ -583,10 +705,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val cur = lines[idx]
         val newQty = (cur.qty + delta).coerceAtLeast(0)
 
+        // оптимистичное обновление — UI реагирует мгновенно
+        if (newQty == 0) lines.removeAt(idx) else lines[idx] = cur.copy(qty = newQty)
+
         val clubIdLong = selectedClubIdLongOrNull()
         val lineId = cur.lineId
 
-        // серверное обновление (только для товаров без вариантов)
         if (user != null && clubIdLong != null && lineId != null && variant == null) {
             viewModelScope.launch {
                 try {
@@ -597,15 +721,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     applyServerCartProducts(cart)
                 } catch (_: Exception) {
-                    // при ошибке — обновляем локально
-                    if (newQty == 0) lines.removeAt(idx) else lines[idx] = cur.copy(qty = newQty)
+                    // откат при ошибке
+                    val rollbackIdx = lines.indexOfFirst { it.productId == productId && it.variant == variant }
+                    if (newQty == 0) {
+                        if (rollbackIdx < 0) lines.add(cur)
+                    } else {
+                        if (rollbackIdx >= 0) lines[rollbackIdx] = cur
+                    }
                 }
             }
-            return
         }
-
-        // локально/мок
-        if (newQty == 0) lines.removeAt(idx) else lines[idx] = cur.copy(qty = newQty)
     }
 
     /** Очистить корзину ОДНОГО клуба (по умолчанию — текущего). */
@@ -838,6 +963,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun removeBookingFromCart(id: String) {
+        // сохраняем для возможного отката
+        val removed = cartsByClub.values.flatMap { it.bookingLines }.firstOrNull { it.id == id }
+
+        // оптимистичное удаление — UI реагирует мгновенно
+        cartsByClub.values.forEach { it.bookingLines.removeAll { line -> line.id == id } }
+        if (editingBookingId == id) editingBookingId = null
+
         val clubIdLong = selectedClubIdLongOrNull()
         val lineIdLong = id.toLongOrNull()
 
@@ -848,17 +980,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     applyServerCartProducts(cart)
                     applyServerCartBookings(cart)
                 } catch (_: Exception) {
-                    // при ошибке — обновляем локально
-                    cartsByClub.values.forEach { it.bookingLines.removeAll { line -> line.id == id } }
-                } finally {
-                    if (editingBookingId == id) editingBookingId = null
+                    // откат при ошибке
+                    if (removed != null) cartFor(removed.clubId).bookingLines.add(removed)
                 }
             }
-            return
         }
-
-        cartsByClub.values.forEach { it.bookingLines.removeAll { line -> line.id == id } }
-        if (editingBookingId == id) editingBookingId = null
     }
 
     fun bookingLineCost(line: CartBookingLine): Int {
@@ -971,7 +1097,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Доступность места с учётом:
-     * - мок-броней FakeData (внутри суток)
+     * - данных занятости с сервера (busySeatIds)
      * - риска продления (+2 часа)
      * - броней пользователя в корзине (пересечение по реальной дате/времени)
      */
@@ -1165,131 +1291,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    fun checkoutInstant(): Boolean {
-        val clubId = selectedClubId
-        val cart = cartFor(clubId)
-        if (cart.bookingLines.isEmpty() && cart.productLines.isEmpty()) return false
-
-        val purchase = buildPurchaseFromCart(clubId)
-        purchaseHistory.add(0, purchase)
-
-        // мок: запускаем “текущую сессию” по последней броне
-        mockStartSession(cart.bookingLines.lastOrNull())
-
-        clearCart(clubId)
-        return true
-    }
-
-    private fun buildPurchaseFromCart(clubId: String): Purchase {
-        val cart = cartFor(clubId)
-        val clubName = FakeData.clubs.firstOrNull { it.id == clubId }?.name ?: "Клуб"
-
-        // дата брони — моковая (см. BookingDraft.date), поэтому "текущее" время делаем на той же шкале
-        // иначе история выглядит "в прошлом" из-за реального времени телефона
-        val mockNow = bookingDraft.date.atStartOfDay().plusMinutes(bookingDraft.startMin.toLong())
-
-        val bookingOrders = cart.bookingLines.mapIndexed { idx, line ->
-            val startAt = lineStartDateTime(line)
-            val endAt = lineEndDateTime(line)
-            val seats = FakeData.seatMapByClub[line.clubId].orEmpty()
-                .filter { s -> line.seatIds.contains(s.id) }
-            val seatLabels = seats.map { it.label }
-            val rate = bookingRateRubPerHour(line.packageHours)
-            val cost = bookingLineCost(line)
-
-            BookingOrder(
-                id = "bo-${System.currentTimeMillis()}-$idx",
-                clubId = line.clubId,
-                clubName = clubName,
-                startAt = startAt,
-                endAt = endAt,
-                seatIds = line.seatIds,
-                seatLabels = if (seatLabels.isEmpty()) line.seatIds else seatLabels,
-                packageHours = line.packageHours,
-                rateRubPerHour = rate,
-                totalRub = cost,
-                status = BookingStatus.UPCOMING
-            )
-        }
-
-        val bookingTotal = bookingOrders.sumOf { it.totalRub }
-
-        val productsTotal = cart.productLines.sumOf { it.price * it.qty }
-
-        val productOrder: ProductOrder? = if (cart.productLines.isEmpty()) {
-            null
-        } else {
-            val readyByResult = calcReadyBy(mockNow, bookingOrders)
-            val items = cart.productLines.map {
-                ProductOrderItemSnapshot(
-                    productId = it.productId,
-                    title = it.title,
-                    variant = it.variant,
-                    priceRub = it.price,
-                    qty = it.qty
-                )
-            }
-
-            ProductOrder(
-                id = "po-${System.currentTimeMillis()}",
-                clubId = clubId,
-                clubName = clubName,
-                createdAt = mockNow,
-                readyBy = readyByResult.readyBy,
-                readyByPolicy = readyByResult.policy,
-                status = ProductOrderStatus.NOT_READY,
-                items = items,
-                totalRub = productsTotal
-            )
-        }
-
-        return Purchase(
-            id = "p-${System.currentTimeMillis()}",
-            clubId = clubId,
-            clubName = clubName,
-            createdAt = mockNow,
-            bookingOrders = bookingOrders,
-            productOrder = productOrder,
-            bookingTotalRub = bookingTotal,
-            productsTotalRub = productsTotal,
-            totalRub = bookingTotal + productsTotal
-        )
-    }
-
-    private data class ReadyByResult(val readyBy: LocalDateTime, val policy: ReadyByPolicy)
-
-    /**
-     * AUTO-правило времени готовности, чтобы уже сейчас история была понятной:
-     * - если ближайшая бронь стартует в течение 30 минут — готовность к началу брони
-     * - иначе — как можно скорее (мок: +15 минут)
-     */
-    private fun calcReadyBy(now: LocalDateTime, bookings: List<BookingOrder>): ReadyByResult {
-        val soonestStart = bookings.minByOrNull { it.startAt }?.startAt
-        if (soonestStart != null) {
-            val minutes = Duration.between(now, soonestStart).toMinutes()
-            if (minutes in 0..30) return ReadyByResult(soonestStart, ReadyByPolicy.BOOKING_START)
-        }
-        return ReadyByResult(now.plusMinutes(15), ReadyByPolicy.ASAP)
-    }
-
-    private fun mockStartSession(line: CartBookingLine?) {
-        val usedClubId = line?.clubId ?: selectedClubId
-        val clubName = FakeData.clubs.first { it.id == usedClubId }.name
-        val seats = FakeData.seatMapByClub[usedClubId].orEmpty()
-            .filter { s -> line?.seatIds?.contains(s.id) == true }
-            .map { it.label }
-
-        val start = line?.startMin ?: bookingDraft.startMin
-        val end = line?.endMin ?: bookingDraft.endMin
-        currentSession = CurrentSessionSummary(
-            clubName = clubName,
-            seatLabels = if (seats.isEmpty()) listOf("—") else seats,
-            startLabel = minToLabel(start),
-            endLabel = minToLabel(end),
-            remainingLabel = "00:45 (мок)"
-        )
-    }
-
     // Публичные хелперы для экранов (BookingSetup/BookingSeats)
     fun setEndMin(endMin: Int) =
         setEndSelection(bookingDraft.date.plusDays(bookingDraft.endDayOffset.toLong()), endMin)
@@ -1302,7 +1303,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Диапазон времени для подсветки занятости мест.
-     * FakeData хранит брони без привязки к дате, поэтому:
      * - если длительность >= 24 часа, считаем что выбран "весь день"
      * - иначе возвращаем TimeRange(startMin,endMin) (может быть "оборачивающим" через 00:00)
      */
@@ -1361,9 +1361,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun isFavoriteClub(clubId: String): Boolean = favoriteClubIds.contains(clubId)
 
+    /** Загружает избранные клубы с сервера. Вызывать после авторизации. */
+    fun loadFavorites() {
+        if (user == null) return
+        viewModelScope.launch {
+            try {
+                val ids = favoritesRepo.getFavorites().map { it.toString() }
+                favoriteClubIds.clear()
+                favoriteClubIds.addAll(ids)
+            } catch (_: Exception) {
+                // не критично — избранное просто не покажется
+            }
+        }
+    }
+
+    /** Оптимистично переключает избранное и синхронизирует с сервером. */
     fun toggleFavoriteClub(clubId: String) {
-        if (favoriteClubIds.contains(clubId)) favoriteClubIds.remove(clubId)
-        else favoriteClubIds.add(clubId)
+        val isNowFavorite = favoriteClubIds.contains(clubId)
+        // оптимистичное обновление UI
+        if (isNowFavorite) favoriteClubIds.remove(clubId) else favoriteClubIds.add(clubId)
+
+        if (user == null) return
+        val clubIdLong = clubId.toLongOrNull() ?: return
+        viewModelScope.launch {
+            try {
+                if (isNowFavorite) favoritesRepo.removeFavorite(clubIdLong)
+                else favoritesRepo.addFavorite(clubIdLong)
+            } catch (_: Exception) {
+                // откат при ошибке
+                if (isNowFavorite) favoriteClubIds.add(clubId) else favoriteClubIds.remove(clubId)
+            }
+        }
     }
 
     fun chooseClub(clubId: String) {
@@ -1465,8 +1493,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 location = dto.locationText ?: "",
                                 address = dto.address,
                                 description = dto.description ?: "",
+                                imageUrl = dto.imageUrl,
                                 isBlocked = dto.isBlocked,
-                                blockReason = dto.blockReason
+                                blockReason = dto.blockReason,
+                                latitude = dto.latitude,
+                                longitude = dto.longitude
                             )
                         }
                     } catch (_: Exception) {
@@ -1477,7 +1508,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 name = dto.name,
                                 location = dto.locationText ?: "",
                                 address = dto.address,
-                                description = dto.description ?: ""
+                                description = dto.description ?: "",
+                                imageUrl = dto.imageUrl,
+                                latitude = dto.latitude,
+                                longitude = dto.longitude
                             )
                         }
                     }
@@ -1488,7 +1522,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             name = dto.name,
                             location = dto.locationText ?: "",
                             address = dto.address,
-                            description = dto.description ?: ""
+                            description = dto.description ?: "",
+                            imageUrl = dto.imageUrl,
+                            latitude = dto.latitude,
+                            longitude = dto.longitude
                         )
                     }
                 }

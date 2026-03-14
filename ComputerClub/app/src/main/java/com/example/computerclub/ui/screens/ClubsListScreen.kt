@@ -14,11 +14,19 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import com.example.computerclub.data.FakeData
+import androidx.compose.ui.viewinterop.AndroidView
+import coil.compose.AsyncImage
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.computerclub.model.Club
 import com.example.computerclub.vm.AppViewModel
-import kotlin.math.abs
+import com.yandex.mapkit.MapKitFactory
+import com.yandex.mapkit.geometry.Point
+import com.yandex.mapkit.map.CameraPosition
+import com.yandex.mapkit.mapview.MapView
 
 private enum class ClubsTab { Favorites, All }
 
@@ -113,7 +121,7 @@ fun ClubsListScreen(
 
         // ВЫБОР: список или карта
         if (mapMode) {
-            ClubsMapStub(
+            DGisClubsMap(
                 clubs = currentList,
                 onClubClick = { onOpenClub(it.id) }
             )
@@ -133,49 +141,66 @@ fun ClubsListScreen(
     }
 }
 
-// карта-заглушка с chip'ами клубов — заменить на Google Maps / Яндекс
 @Composable
-private fun ClubsMapStub(
+private fun DGisClubsMap(
     clubs: List<Club>,
     onClubClick: (Club) -> Unit
 ) {
-    BoxWithConstraints(
+    val geoClubs = remember(clubs) {
+        clubs.filter { it.latitude != null && it.longitude != null }
+    }
+    val currentOnClubClick = rememberUpdatedState(onClubClick)
+    val mapRef = remember { mutableStateOf<MapView?>(null) }
+
+    AndroidView(
+        factory = { ctx ->
+            MapView(ctx).also { mv -> mapRef.value = mv }
+        },
+        update = { mv ->
+            val map = mv.mapWindow.map
+            // сбрасываем старые маркеры и рисуем по актуальному фильтру
+            map.mapObjects.clear()
+
+            if (geoClubs.isNotEmpty()) {
+                val avgLat = geoClubs.sumOf { it.latitude!! } / geoClubs.size
+                val avgLng = geoClubs.sumOf { it.longitude!! } / geoClubs.size
+                map.move(CameraPosition(Point(avgLat, avgLng), 10f, 0f, 0f))
+            }
+
+            geoClubs.forEach { club ->
+                val placemark = map.mapObjects.addPlacemark().apply {
+                    geometry = Point(club.latitude!!, club.longitude!!)
+                    userData = club
+                }
+                placemark.addTapListener { _, _ ->
+                    currentOnClubClick.value(club)
+                    true
+                }
+            }
+        },
         modifier = Modifier
             .fillMaxWidth()
             .height(420.dp)
-    ) box@{
-        Card(modifier = Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Карта (заглушка)", style = MaterialTheme.typography.titleMedium)
-                    Text("Тапни по метке клуба → откроются детали.", style = MaterialTheme.typography.bodyMedium)
+    )
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    MapKitFactory.getInstance().onStart()
+                    mapRef.value?.onStart()
                 }
-
-                clubs.forEach { club ->
-                    val (xFrac, yFrac) = remember(club.id) { pseudoCoords(club.id) }
-
-                    val x = this@box.maxWidth * xFrac
-                    val y = this@box.maxHeight * yFrac
-
-                    AssistChip(
-                        onClick = { onClubClick(club) },
-                        label = { Text(club.name) },
-                        modifier = Modifier
-                            .offset(x = x, y = y)
-                            .padding(4.dp)
-                    )
+                Lifecycle.Event.ON_STOP -> {
+                    MapKitFactory.getInstance().onStop()
+                    mapRef.value?.onStop()
                 }
+                else -> {}
             }
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-}
-
-private fun pseudoCoords(id: String): Pair<Float, Float> {
-    // 0.12..0.82 чтобы метки не прилипали к краям
-    val h = abs(id.hashCode())
-    val x = 0.12f + ((h % 1000) / 1000f) * 0.70f
-    val y = 0.18f + (((h / 1000) % 1000) / 1000f) * 0.65f
-    return x to y
 }
 
 @Composable
@@ -190,6 +215,16 @@ private fun ClubCard(
             .fillMaxWidth()
             .clickable(onClick = onOpen)
     ) {
+        if (club.imageUrl != null) {
+            AsyncImage(
+                model = club.imageUrl,
+                contentDescription = club.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp)
+            )
+        }
         Box(Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(12.dp),

@@ -102,6 +102,7 @@ class GlobalCatalogAdminService(
         categoryId = requireNotNull(category.id),
         title = title,
         description = description,
+        imageUrl = imageUrl,
         isActive = isActive
     )
 }
@@ -129,6 +130,7 @@ class ClubCatalogAdminService(
                 categoryId = p.category.id!!,
                 productTitle = p.title,
                 description = p.description,
+                imageUrl = p.imageUrl,
                 productIsActive = p.isActive,
                 isLinkedToClub = cp != null,
                 clubPriceRub = cp?.priceRub,

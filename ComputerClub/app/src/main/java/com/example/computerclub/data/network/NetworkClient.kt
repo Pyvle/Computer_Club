@@ -119,6 +119,7 @@ class NetworkClient(
     val checkoutApi: CheckoutApi by lazy { retrofit.create() }
     val seatApi: SeatApi by lazy { retrofit.create() }
     val floorplanApi: FloorplanApi by lazy { retrofit.create() }
+    val favoritesApi: FavoritesApi by lazy { retrofit.create() }
 
     private fun responseCount(response: Response): Int {
         var res: Response? = response
