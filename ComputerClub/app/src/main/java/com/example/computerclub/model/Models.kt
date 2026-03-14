@@ -52,7 +52,6 @@ data class Product(
     val title: String,
     val price: Int,
     val description: String,
-    val imageUrl: String? = null,
     val variants: List<String> = emptyList()
 )
 
@@ -108,14 +107,10 @@ data class Club(
     val location: String,
     val address: String,
     val description: String,
-    val imageUrl: String? = null,
 
     // из /clubs/available
     val isBlocked: Boolean = false,
-    val blockReason: String? = null,
-
-    val latitude: Double? = null,
-    val longitude: Double? = null
+    val blockReason: String? = null
 )
 
 // --- Orders / History ---

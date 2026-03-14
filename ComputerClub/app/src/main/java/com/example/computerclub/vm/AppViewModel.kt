@@ -382,7 +382,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             title = it.title,
                             price = it.priceRub,
                             description = it.description ?: "",
-                            imageUrl = it.imageUrl,
                             variants = emptyList()
                         )
                     }
@@ -1493,11 +1492,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 location = dto.locationText ?: "",
                                 address = dto.address,
                                 description = dto.description ?: "",
-                                imageUrl = dto.imageUrl,
                                 isBlocked = dto.isBlocked,
-                                blockReason = dto.blockReason,
-                                latitude = dto.latitude,
-                                longitude = dto.longitude
+                                blockReason = dto.blockReason
                             )
                         }
                     } catch (_: Exception) {
@@ -1508,10 +1504,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 name = dto.name,
                                 location = dto.locationText ?: "",
                                 address = dto.address,
-                                description = dto.description ?: "",
-                                imageUrl = dto.imageUrl,
-                                latitude = dto.latitude,
-                                longitude = dto.longitude
+                                description = dto.description ?: ""
                             )
                         }
                     }
@@ -1522,10 +1515,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             name = dto.name,
                             location = dto.locationText ?: "",
                             address = dto.address,
-                            description = dto.description ?: "",
-                            imageUrl = dto.imageUrl,
-                            latitude = dto.latitude,
-                            longitude = dto.longitude
+                            description = dto.description ?: ""
                         )
                     }
                 }

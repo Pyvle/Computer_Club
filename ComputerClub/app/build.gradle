@@ -17,11 +17,6 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-
-        def localProps = new Properties()
-        def localPropsFile = rootProject.file("local.properties")
-        if (localPropsFile.exists()) localProps.load(new FileInputStream(localPropsFile))
-        buildConfigField "String", "MAPKIT_API_KEY", "\"${localProps.getProperty('MAPKIT_API_KEY', '')}\""
     }
 
     buildTypes {
@@ -39,7 +34,6 @@ android {
     }
     buildFeatures {
         compose true
-        buildConfig true
     }
 }
 
@@ -74,9 +68,5 @@ dependencies {
     implementation libs.okhttp.logging
     implementation libs.kotlinx.serialization.json
     implementation libs.datastore.preferences
-
-    implementation 'com.yandex.android:maps.mobile:4.6.1-lite'
-
-    implementation("io.coil-kt:coil-compose:2.7.0")
 
 }
