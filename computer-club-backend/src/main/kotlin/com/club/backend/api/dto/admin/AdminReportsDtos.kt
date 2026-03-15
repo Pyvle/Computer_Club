@@ -118,6 +118,22 @@ data class ClubDashboardResponse(
     val occupiedSeats: Int,
     val totalSeats: Int,
     val todayRevenueRub: Long,
+    /** null если у запрашивающего нет прав на расширенную финансовую статистику */
+    val weekRevenueRub: Long?,
+    val monthRevenueRub: Long?,
     val recentBookings: List<DashboardBookingPreview>,
     val recentPurchases: List<DashboardPurchasePreview>
+)
+
+// одна запись в снимке занятости зала: место + активная/предстоящая бронь
+data class FloorplanBookingEntry(
+    val seatId: Long,
+    val bookingId: Long,
+    val userId: Long,
+    val userPhone: String?,
+    val status: BookingStatus,
+    val startAt: String,
+    val endAt: String,
+    val totalRub: Int,
+    val paymentStatus: String? // null если бронь без заказа
 )

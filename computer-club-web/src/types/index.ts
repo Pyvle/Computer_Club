@@ -410,12 +410,27 @@ export interface UpsertSeatPriceRequest {
   pricePerHourRub: number
 }
 
+export interface FloorplanBookingEntry {
+  seatId: number
+  bookingId: number
+  userId: number
+  userPhone: string | null
+  status: 'UPCOMING' | 'ACTIVE'
+  startAt: string
+  endAt: string
+  totalRub: number
+  paymentStatus: string | null
+}
+
 export interface ClubDashboardResponse {
   activeBookingsCount: number
   upcomingTodayCount: number
   occupiedSeats: number
   totalSeats: number
   todayRevenueRub: number
+  /** null если у запрашивающего нет прав на расширенную финансовую статистику */
+  weekRevenueRub: number | null
+  monthRevenueRub: number | null
   recentBookings: DashboardBookingPreview[]
   recentPurchases: DashboardPurchasePreview[]
 }

@@ -171,6 +171,35 @@ export default function ClubDashboardPage() {
         </Col>
       </Row>
 
+      {(data.weekRevenueRub !== null || data.monthRevenueRub !== null) && (
+        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+          {data.weekRevenueRub !== null && (
+            <Col span={6}>
+              <Card>
+                <Statistic
+                  title="Выручка за 7 дней"
+                  value={data.weekRevenueRub}
+                  suffix="₽"
+                  valueStyle={{ color: '#52c41a' }}
+                />
+              </Card>
+            </Col>
+          )}
+          {data.monthRevenueRub !== null && (
+            <Col span={6}>
+              <Card>
+                <Statistic
+                  title="Выручка за 30 дней"
+                  value={data.monthRevenueRub}
+                  suffix="₽"
+                  valueStyle={{ color: '#52c41a' }}
+                />
+              </Card>
+            </Col>
+          )}
+        </Row>
+      )}
+
       <Row gutter={[16, 16]}>
         <Col span={14}>
           <Card

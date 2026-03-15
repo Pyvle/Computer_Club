@@ -10,5 +10,7 @@ enum class ClubPermission {
     CLUB_SEATS_MANAGE,
     CLUB_USER_BLOCKS_MANAGE,
     CLUB_FLOORPLANS_MANAGE,
-    CLUB_REPORTS_VIEW
+    CLUB_REPORTS_VIEW,
+    // доступ к аудиту — только для OWNER; у ADMIN нет по умолчанию
+    CLUB_AUDIT_VIEW
 }

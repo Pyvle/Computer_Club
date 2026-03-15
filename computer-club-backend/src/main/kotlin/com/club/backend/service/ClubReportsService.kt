@@ -9,6 +9,7 @@ import com.club.backend.api.dto.admin.AdminPurchaseProductOrderDetail
 import com.club.backend.api.dto.admin.AdminPurchaseResponse
 import com.club.backend.api.dto.admin.AdminPurchaseSeatDetail
 import com.club.backend.api.dto.admin.ClubDashboardResponse
+import com.club.backend.api.dto.admin.FloorplanBookingEntry
 import com.club.backend.domain.entity.BookingEntity
 import com.club.backend.domain.entity.PurchaseEntity
 import com.club.backend.domain.enum.BookingStatus
@@ -173,10 +174,32 @@ class ClubReportsService(
         )
     }
 
+    /** Снимок занятости зала: брони, активные в момент [at]. */
     @Transactional(readOnly = true)
-    fun dashboard(clubId: Long): ClubDashboardResponse {
+    fun floorplanBookings(clubId: Long, at: LocalDateTime): List<FloorplanBookingEntry> =
+        bookingRepository.findAtMoment(clubId, at).flatMap { b ->
+            b.seats.map { bs ->
+                FloorplanBookingEntry(
+                    seatId = bs.seat.id!!,
+                    bookingId = b.id!!,
+                    userId = b.user.id!!,
+                    userPhone = b.user.phone,
+                    status = b.status,
+                    startAt = isoFmt.format(b.startAt),
+                    endAt = isoFmt.format(b.endAt),
+                    totalRub = b.totalRubSnapshot,
+                    paymentStatus = b.purchase?.paymentStatus?.name
+                )
+            }
+        }
+
+    @Transactional(readOnly = true)
+    fun dashboard(clubId: Long, includeExtendedRevenue: Boolean): ClubDashboardResponse {
         val todayStart    = LocalDate.now().atStartOfDay()
         val tomorrowStart = todayStart.plusDays(1)
+
+        val weekStart  = todayStart.minusDays(6)   // скользящие 7 дней
+        val monthStart = todayStart.minusDays(29)  // скользящие 30 дней
 
         return ClubDashboardResponse(
             activeBookingsCount = bookingRepository.countByClubIdAndStatus(clubId, BookingStatus.ACTIVE).toInt(),
@@ -184,6 +207,8 @@ class ClubReportsService(
             occupiedSeats       = bookingRepository.countOccupiedSeats(clubId).toInt(),
             totalSeats          = seatRepository.countByClubIdAndIsActiveTrue(clubId).toInt(),
             todayRevenueRub     = purchaseRepository.sumPaidRevenue(clubId, todayStart, tomorrowStart),
+            weekRevenueRub      = if (includeExtendedRevenue) purchaseRepository.sumPaidRevenue(clubId, weekStart, tomorrowStart) else null,
+            monthRevenueRub     = if (includeExtendedRevenue) purchaseRepository.sumPaidRevenue(clubId, monthStart, tomorrowStart) else null,
             recentBookings      = bookingRepository.findRecentPreviews(clubId, PageRequest.of(0, 5)),
             recentPurchases     = purchaseRepository.findRecentPreviews(clubId, PageRequest.of(0, 5))
         )

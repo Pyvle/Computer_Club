@@ -54,6 +54,13 @@ class RbacService(
         return clubStaffRepository.existsWithAnyRole(clubId, uid, listOf(ClubRole.OWNER, ClubRole.ADMIN))
     }
 
+    /** Возвращает true если пользователь является OWNER клуба (или GLOBAL_ADMIN). */
+    fun isOwner(auth: Authentication, clubId: Long): Boolean {
+        if (isGlobalAdmin(auth)) return true
+        val uid = userId(auth)
+        return clubStaffRepository.existsWithAnyRole(clubId, uid, listOf(ClubRole.OWNER))
+    }
+
     fun canManageClubAdmins(auth: Authentication, clubId: Long): Boolean {
         return hasClubPermission(auth, clubId, ClubPermission.CLUB_ADMINS_MANAGE)
     }

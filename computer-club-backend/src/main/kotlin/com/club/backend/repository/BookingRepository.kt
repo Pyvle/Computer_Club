@@ -140,6 +140,26 @@ interface BookingRepository : JpaRepository<BookingEntity, Long> {
     @Query("SELECT COUNT(bs.seat.id) FROM BookingEntity b JOIN b.seats bs WHERE b.club.id = :clubId AND b.status = 'ACTIVE'")
     fun countOccupiedSeats(@Param("clubId") clubId: Long): Long
 
+    /** Возвращает брони клуба, активные в указанный момент времени (для снимка занятости зала). */
+    @Query(
+        """
+        select distinct b
+        from BookingEntity b
+        left join fetch b.user u
+        left join fetch b.seats bs
+        left join fetch bs.seat s
+        left join fetch b.purchase p
+        where b.club.id = :clubId
+          and b.status in ('UPCOMING', 'ACTIVE')
+          and b.startAt <= :at
+          and b.endAt > :at
+        """
+    )
+    fun findAtMoment(
+        @Param("clubId") clubId: Long,
+        @Param("at") at: LocalDateTime
+    ): List<BookingEntity>
+
     // JPQL-проекция — избегает дублей строк и пагинации в памяти
     @Query("""
         SELECT new com.club.backend.api.dto.admin.DashboardBookingPreview(

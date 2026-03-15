@@ -46,6 +46,14 @@ export default function OwnerLayout() {
   const clubs = user?.clubs ?? []
   const activeClubId = clubId ? Number(clubId) : (clubs[0]?.clubId ?? null)
 
+  const activeClub = clubs.find((c) => c.clubId === activeClubId)
+  // ADMIN не видит управленческих разделов — только OWNER
+  const isOwner = activeClub?.role === 'OWNER'
+  const visibleNav = CLUB_NAV.filter(({ key }) => {
+    if (['staff', 'audit', 'settings'].includes(key)) return isOwner
+    return true
+  })
+
   function handleLogout() {
     logout()
     message.success('Вы вышли из системы')
@@ -97,7 +105,7 @@ export default function OwnerLayout() {
               theme="dark"
               mode="inline"
               selectedKeys={[selectedClubNavKey]}
-              items={CLUB_NAV}
+              items={visibleNav}
               onClick={({ key }) => {
                 if (activeClubId) navigate(`/admin/club/${activeClubId}/${key}`)
               }}

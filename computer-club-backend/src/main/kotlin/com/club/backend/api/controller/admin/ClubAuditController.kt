@@ -12,7 +12,7 @@ class ClubAuditController(
     private val auditQueryService: AuditQueryService
 ) {
     @GetMapping
-    @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_REPORTS_VIEW)")
+    @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_AUDIT_VIEW)")
     fun list(
         @PathVariable clubId: Long,
         @RequestParam(required = false) action: String?,

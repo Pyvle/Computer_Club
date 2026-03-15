@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   Table, Button, Tag, Popconfirm, Modal, Form, Input,
-  Select, Typography, Space, Divider, message, Alert, Tooltip,
+  Select, Typography, Space, Switch, message, Alert, Tooltip,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import apiClient from '../../utils/apiClient'
@@ -17,21 +17,11 @@ const PERMISSION_LABELS: Record<string, string> = {
   CLUB_SEATS_MANAGE: 'Управление местами',
   CLUB_USER_BLOCKS_MANAGE: 'Блокировки пользователей',
   CLUB_FLOORPLANS_MANAGE: 'Управление схемами зала',
-  CLUB_REPORTS_VIEW: 'Просмотр отчётов',
+  CLUB_REPORTS_VIEW: 'Просмотр отчётов (брони, покупки)',
+  CLUB_AUDIT_VIEW: 'Просмотр аудита',
 }
 
 const ALL_PERMISSIONS = Object.keys(PERMISSION_LABELS)
-
-type PermissionState = 'role' | 'granted' | 'denied'
-
-function getPermissionState(
-  permission: string,
-  overrides: ClubStaffPermissionsResponse['overrides'],
-): PermissionState {
-  const override = overrides.find(o => o.permission === permission)
-  if (!override) return 'role'
-  return override.granted ? 'granted' : 'denied'
-}
 
 interface PermissionsModalProps {
   clubId: number
@@ -68,14 +58,18 @@ function PermissionsModal({ clubId, userId, phone, currentUserId, open, onClose,
 
   const isSelf = currentUserId !== null && userId === currentUserId
 
-  async function handleChange(permission: string, value: PermissionState) {
+  async function handleToggle(permission: string, newGranted: boolean) {
+    if (!data) return
     setSaving(permission)
     try {
-      if (value === 'role') {
+      const roleGranted = (data.rolePermissions as string[]).includes(permission)
+      if (newGranted === roleGranted) {
+        // совпадает с дефолтом роли — сбрасываем оверрайд
         await apiClient.delete(`/admin/clubs/${clubId}/staff/${userId}/permissions/${permission}`)
       } else {
+        // отличается от дефолта — ставим явный оверрайд
         await apiClient.put(`/admin/clubs/${clubId}/staff/${userId}/permissions/${permission}`, {
-          granted: value === 'granted',
+          granted: newGranted,
         })
       }
       await fetchPermissions()
@@ -87,13 +81,65 @@ function PermissionsModal({ clubId, userId, phone, currentUserId, open, onClose,
     }
   }
 
+  const columns: ColumnsType<{ key: string }> = [
+    {
+      title: 'Право',
+      dataIndex: 'key',
+      render: (p: string) => PERMISSION_LABELS[p] ?? p,
+    },
+    {
+      title: 'По умолчанию',
+      dataIndex: 'key',
+      width: 120,
+      render: (p: string) => {
+        if (!data) return null
+        const roleGranted = (data.rolePermissions as string[]).includes(p)
+        return roleGranted
+          ? <Tag color="green">Разрешено</Tag>
+          : <Tag color="default">Запрещено</Tag>
+      },
+    },
+    {
+      title: 'Текущее',
+      dataIndex: 'key',
+      width: 180,
+      render: (p: string) => {
+        if (!data) return null
+        const isGranted = (data.effectivePermissions as string[]).includes(p)
+        const hasOverride = data.overrides.some(o => o.permission === p)
+        // запрещаем самому себе снять CLUB_ADMINS_MANAGE — это заблокирует доступ
+        const selfLockout = isSelf && p === 'CLUB_ADMINS_MANAGE'
+        const toggle = (
+          <Space size={8}>
+            <Switch
+              checked={isGranted}
+              size="small"
+              loading={saving === p}
+              disabled={saving !== null || selfLockout}
+              onChange={(checked) => handleToggle(p, checked)}
+            />
+            <Text style={{ fontSize: 13 }} type={isGranted ? undefined : 'secondary'}>
+              {isGranted ? 'Разрешено' : 'Запрещено'}
+            </Text>
+            {hasOverride && (
+              <Tag color="orange" style={{ fontSize: 11, marginLeft: 0 }}>изменено</Tag>
+            )}
+          </Space>
+        )
+        return selfLockout
+          ? <Tooltip title="Нельзя снять у себя право на управление персоналом">{toggle}</Tooltip>
+          : toggle
+      },
+    },
+  ]
+
   return (
     <Modal
       title={`Права: ${phone ?? `ID ${userId}`}`}
       open={open}
       onCancel={onClose}
       footer={<Button onClick={onClose}>Закрыть</Button>}
-      width={560}
+      width={620}
     >
       {loading && <Text type="secondary">Загрузка...</Text>}
       {data && (
@@ -107,51 +153,11 @@ function PermissionsModal({ clubId, userId, phone, currentUserId, open, onClose,
             />
           )}
           <Table
-            dataSource={ALL_PERMISSIONS.map(p => ({ key: p, permission: p }))}
+            dataSource={ALL_PERMISSIONS.map(p => ({ key: p }))}
             pagination={false}
             size="small"
-            columns={[
-              {
-                title: 'Право',
-                dataIndex: 'permission',
-                render: (p: string) => PERMISSION_LABELS[p] ?? p,
-              },
-              {
-                title: 'Статус',
-                dataIndex: 'permission',
-                width: 200,
-                render: (p: string) => {
-                  // запрещаем самому себе снять CLUB_ADMINS_MANAGE — это заблокирует доступ
-                  const selfLockout = isSelf && p === 'CLUB_ADMINS_MANAGE'
-                  const select = (
-                    <Select
-                      value={getPermissionState(p, data.overrides)}
-                      size="small"
-                      style={{ width: 180 }}
-                      loading={saving === p}
-                      disabled={saving !== null || selfLockout}
-                      onChange={(val: PermissionState) => handleChange(p, val)}
-                      options={[
-                        { value: 'role', label: 'По роли' },
-                        { value: 'granted', label: 'Разрешено' },
-                        { value: 'denied', label: 'Запрещено' },
-                      ]}
-                    />
-                  )
-                  return selfLockout
-                    ? <Tooltip title="Нельзя снять у себя право на управление персоналом">{select}</Tooltip>
-                    : select
-                },
-              },
-            ]}
+            columns={columns}
           />
-          <Divider style={{ margin: '12px 0' }} />
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Итоговые права:{' '}
-            {data.effectivePermissions.length === 0
-              ? 'нет'
-              : data.effectivePermissions.map(p => PERMISSION_LABELS[p] ?? p).join(', ')}
-          </Text>
         </>
       )}
     </Modal>

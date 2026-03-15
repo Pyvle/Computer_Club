@@ -14,12 +14,12 @@ class ClubSettingsController(
 ) {
 
     @GetMapping
-    @PreAuthorize("@rbac.canManageClub(authentication, #clubId)")
+    @PreAuthorize("@rbac.isOwner(authentication, #clubId)")
     fun get(@PathVariable clubId: Long): ClubSettingsResponse =
         clubSettingsService.get(clubId)
 
     @PutMapping
-    @PreAuthorize("@rbac.canManageClub(authentication, #clubId)")
+    @PreAuthorize("@rbac.isOwner(authentication, #clubId)")
     fun update(
         @PathVariable clubId: Long,
         @RequestBody req: UpdateClubSettingsRequest,
