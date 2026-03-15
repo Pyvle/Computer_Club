@@ -20,7 +20,6 @@ import type {
   AdminPurchaseSeatDetail,
   BookingStatus,
   PaymentStatus,
-  ProductOrderStatus,
 } from '../../types'
 
 const PAYMENT_STATUS: Record<PaymentStatus, string> = {
@@ -53,17 +52,6 @@ const BOOKING_STATUS_COLOR: Record<BookingStatus, string> = {
   CANCELED: 'error',
 }
 
-const ORDER_STATUS: Record<ProductOrderStatus, string> = {
-  NOT_READY: 'Не готово',
-  READY: 'Готово',
-  CANCELED: 'Отменён',
-}
-
-const ORDER_STATUS_COLOR: Record<ProductOrderStatus, string> = {
-  NOT_READY: 'warning',
-  READY: 'success',
-  CANCELED: 'default',
-}
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('ru-RU', {
@@ -213,9 +201,6 @@ export default function ClubPurchaseDetailPage() {
           <Descriptions.Item label="Дата">
             {formatDateTime(detail.createdAt)}
           </Descriptions.Item>
-          <Descriptions.Item label="Способ оплаты">
-            {detail.paymentMethod === 'CARD' ? 'Карта' : detail.paymentMethod}
-          </Descriptions.Item>
         </Descriptions>
       </Card>
 
@@ -275,14 +260,7 @@ export default function ClubPurchaseDetailPage() {
       {detail.productOrder && (
         <Card
           size="small"
-          title={
-            <Space>
-              {`Заказ товаров #${detail.productOrder.orderId}`}
-              <Tag color={ORDER_STATUS_COLOR[detail.productOrder.status]}>
-                {ORDER_STATUS[detail.productOrder.status]}
-              </Tag>
-            </Space>
-          }
+          title={`Заказ товаров #${detail.productOrder.orderId}`}
         >
           <Table
             size="small"

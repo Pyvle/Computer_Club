@@ -1,11 +1,9 @@
 package com.club.backend.api.dto
 
-import com.club.backend.domain.enum.PaymentMethod
 import jakarta.validation.constraints.NotNull
 
 data class CheckoutRequest(
-    @field:NotNull val clubId: Long,
-    val paymentMethod: PaymentMethod = PaymentMethod.CARD
+    @field:NotNull val clubId: Long
 )
 
 data class CheckoutResponse(

@@ -145,7 +145,6 @@ class ClubReportsService(
         val productOrder = items.firstOrNull()?.productOrder?.let { po ->
             AdminPurchaseProductOrderDetail(
                 orderId = po.id!!,
-                status = po.status,
                 totalRub = po.totalRubSnapshot,
                 items = items.map { i ->
                     AdminPurchaseOrderItemDetail(
@@ -164,7 +163,6 @@ class ClubReportsService(
             userPhone = purchase.user.phone,
             clubId = purchase.club.id!!,
             createdAt = isoFmt.format(purchase.createdAt),
-            paymentMethod = purchase.paymentMethod,
             paymentStatus = purchase.paymentStatus,
             bookingTotalRub = purchase.bookingTotalRub,
             productsTotalRub = purchase.productsTotalRub,

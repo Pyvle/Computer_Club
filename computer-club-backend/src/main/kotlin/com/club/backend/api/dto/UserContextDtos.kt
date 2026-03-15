@@ -3,7 +3,6 @@ package com.club.backend.api.dto
 data class UserContextResponse(
     val userId: Long,
     val phone: String?,
-    val email: String?,
     val globalRole: String,
     val clubs: List<ClubMembership>,
     val hasPassword: Boolean,

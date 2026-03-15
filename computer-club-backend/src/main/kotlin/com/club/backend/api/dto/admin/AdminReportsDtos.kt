@@ -1,9 +1,7 @@
 package com.club.backend.api.dto.admin
 
 import com.club.backend.domain.enum.BookingStatus
-import com.club.backend.domain.enum.PaymentMethod
 import com.club.backend.domain.enum.PaymentStatus
-import com.club.backend.domain.enum.ProductOrderStatus
 import com.club.backend.domain.enum.SeatType
 import java.time.LocalDateTime
 
@@ -55,7 +53,6 @@ data class AdminPurchaseDetailResponse(
     val userPhone: String?,
     val clubId: Long,
     val createdAt: String,
-    val paymentMethod: PaymentMethod,
     val paymentStatus: PaymentStatus,
     val bookingTotalRub: Int,
     val productsTotalRub: Int,
@@ -83,7 +80,6 @@ data class AdminPurchaseSeatDetail(
 
 data class AdminPurchaseProductOrderDetail(
     val orderId: Long,
-    val status: ProductOrderStatus,
     val totalRub: Int,
     val items: List<AdminPurchaseOrderItemDetail>
 )

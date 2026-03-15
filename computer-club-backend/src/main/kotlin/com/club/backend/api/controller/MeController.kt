@@ -70,7 +70,6 @@ class MeController(
         return UserContextResponse(
             userId = user.id!!,
             phone = user.phone,
-            email = user.email,
             globalRole = user.globalRole.name,
             clubs = clubs,
             hasPassword = user.passwordHash != null,

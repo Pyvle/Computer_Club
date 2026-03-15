@@ -1,6 +1,5 @@
 package com.club.backend.domain.entity
 
-import com.club.backend.domain.enum.PaymentMethod
 import com.club.backend.domain.enum.PaymentStatus
 import jakarta.persistence.*
 import java.time.LocalDateTime
@@ -30,13 +29,6 @@ class PurchaseEntity(
     var totalRub: Int = 0,
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "payment_method", nullable = false, length = 24)
-    var paymentMethod: PaymentMethod = PaymentMethod.CARD,
-
-    @Enumerated(EnumType.STRING)
     @Column(name = "payment_status", nullable = false, length = 24)
-    var paymentStatus: PaymentStatus = PaymentStatus.CREATED,
-
-    @Column(name = "external_payment_id", length = 128)
-    var externalPaymentId: String? = null
+    var paymentStatus: PaymentStatus = PaymentStatus.CREATED
 )

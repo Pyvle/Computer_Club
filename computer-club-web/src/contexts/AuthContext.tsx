@@ -17,7 +17,6 @@ export interface ActiveApplicationBrief {
 export interface UserContext {
   userId: number
   phone: string | null
-  email: string | null
   globalRole: string
   clubs: ClubMembership[]
   hasPassword: boolean

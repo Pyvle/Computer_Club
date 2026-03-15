@@ -9,8 +9,6 @@ import com.club.backend.api.dto.PurchaseListItemResponse
 import com.club.backend.domain.entity.*
 import com.club.backend.domain.enum.BookingStatus
 import com.club.backend.domain.enum.PaymentStatus
-import com.club.backend.domain.enum.ProductOrderStatus
-import com.club.backend.domain.enum.ReadyByPolicy
 import com.club.backend.repository.*
 import com.club.backend.repository.ClubSeatPriceRepository
 import com.club.backend.repository.ClubTimePackageRepository
@@ -126,9 +124,7 @@ class CheckoutService(
                 bookingTotalRub = bookingTotal,
                 productsTotalRub = productsTotal,
                 totalRub = total,
-                paymentMethod = request.paymentMethod,
-                paymentStatus = PaymentStatus.CREATED,
-                externalPaymentId = null
+                paymentStatus = PaymentStatus.CREATED
             )
         )
 
@@ -170,9 +166,6 @@ class CheckoutService(
                     user = user,
                     club = club,
                     createdAt = LocalDateTime.now(),
-                    readyBy = null,
-                    readyByPolicy = ReadyByPolicy.ASAP,
-                    status = ProductOrderStatus.NOT_READY,
                     totalRubSnapshot = productsTotal
                 )
             )

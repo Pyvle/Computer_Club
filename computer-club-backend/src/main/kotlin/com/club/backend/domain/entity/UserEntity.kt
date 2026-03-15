@@ -27,9 +27,6 @@ class UserEntity(
     @Column(name = "created_at", nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now(),
 
-    @Column(length = 255)
-    var email: String? = null,
-
     @Column(name = "updated_at", nullable = false)
     var updatedAt: LocalDateTime = LocalDateTime.now()
 )

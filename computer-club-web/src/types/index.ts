@@ -212,8 +212,6 @@ export interface ClubStaffPermissionsResponse {
 }
 
 export type BookingStatus = 'UPCOMING' | 'ACTIVE' | 'DONE' | 'CANCELED'
-export type ProductOrderStatus = 'NOT_READY' | 'READY' | 'CANCELED'
-export type PaymentMethod = 'CARD'
 export type SeatType = 'REGULAR' | 'VIP'
 export type PaymentStatus = 'CREATED' | 'PAID' | 'FAILED' | 'CANCELED' | 'REFUND'
 
@@ -285,7 +283,6 @@ export interface AdminPurchaseOrderItemDetail {
 
 export interface AdminPurchaseProductOrderDetail {
   orderId: number
-  status: ProductOrderStatus
   totalRub: number
   items: AdminPurchaseOrderItemDetail[]
 }
@@ -296,7 +293,6 @@ export interface AdminPurchaseDetailResponse {
   userPhone: string | null
   clubId: number
   createdAt: string
-  paymentMethod: PaymentMethod
   paymentStatus: PaymentStatus
   bookingTotalRub: number
   productsTotalRub: number
