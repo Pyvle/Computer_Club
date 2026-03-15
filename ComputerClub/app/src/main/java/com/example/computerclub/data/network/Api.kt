@@ -71,9 +71,9 @@ interface CartApi {
 
     @DELETE("/api/v1/cart/items/{type}/{id}")
     suspend fun deleteItem(
-        @Query("clubId") clubId: Long,
         @Path("type") type: String,
-        @Path("id") id: Long
+        @Path("id") id: Long,
+        @Query("clubId") clubId: Long
     ): CartResponseDto
 
     @DELETE("/api/v1/cart")
@@ -132,4 +132,14 @@ interface FloorplanApi {
         @Query("from") from: String,
         @Query("to") to: String
     ): FloorplanWithAvailabilityResponseDto
+}
+
+interface TimePackageApi {
+    @GET("/api/v1/clubs/{clubId}/time-packages")
+    suspend fun getPackages(@Path("clubId") clubId: Long): List<TimePackageResponseDto>
+}
+
+interface SeatPriceApi {
+    @GET("/api/v1/clubs/{clubId}/seat-prices")
+    suspend fun getPrices(@Path("clubId") clubId: Long): List<SeatPriceResponseDto>
 }

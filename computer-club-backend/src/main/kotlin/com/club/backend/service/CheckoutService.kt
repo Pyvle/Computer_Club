@@ -12,6 +12,8 @@ import com.club.backend.domain.enum.PaymentStatus
 import com.club.backend.domain.enum.ProductOrderStatus
 import com.club.backend.domain.enum.ReadyByPolicy
 import com.club.backend.repository.*
+import com.club.backend.repository.ClubSeatPriceRepository
+import com.club.backend.repository.ClubTimePackageRepository
 import jakarta.persistence.EntityNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -20,6 +22,8 @@ import java.time.LocalDateTime
 import kotlin.math.ceil
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
+
+private const val FALLBACK_RATE = 200 // используется если цены за места не заданы
 
 @Service
 class CheckoutService(
@@ -37,7 +41,9 @@ class CheckoutService(
     private val cartCleanupService: CartCleanupService,
     private val seatRepository: SeatRepository,
     private val clubAccessService: ClubAccessService,
-    private val auditService: AuditService
+    private val auditService: AuditService,
+    private val seatPriceRepository: ClubSeatPriceRepository,
+    private val timePackageRepository: ClubTimePackageRepository
 ) {
 
     @Transactional
@@ -79,17 +85,32 @@ class CheckoutService(
         }
 
         // 2) Подсчёт суммы бронирований
+        // тарифная сетка: цены за типы мест и активные пакеты
+        val seatPriceMap = seatPriceRepository.findAllByClub_Id(club.id!!)
+            .associate { it.seatType to it.pricePerHourRub }
+        val standardRate = if (seatPriceMap.isNotEmpty()) seatPriceMap.values.min() else FALLBACK_RATE
+        val packageRateMap = timePackageRepository
+            .findAllByClub_IdAndIsActiveTrueOrderBySortOrderAscIdAsc(club.id!!)
+            .associate { it.hours to it.pricePerHourRub }
+
         var bookingTotal = 0
-        val bookingDrafts = mutableListOf<Pair<CartBookingLineEntity, Int>>() // line + lineTotal
+        val bookingDrafts = mutableListOf<Triple<CartBookingLineEntity, Int, Int>>() // line, lineTotal, baseRate
 
         cartBookingLines.forEach { line ->
-            val selectedSeatsCount = cartBookingSeatRepository.findAllByLine_Id(line.id!!).size
-            require(selectedSeatsCount > 0) { "Select at least one seat for booking line ${line.id}" }
+            val lineSeats = cartBookingSeatRepository.findAllByLine_Id(line.id!!)
+            require(lineSeats.isNotEmpty()) { "Select at least one seat for booking line ${line.id}" }
 
             val hours = Duration.between(line.startAt, line.endAt).toMinutes().toDouble() / 60.0
-            val lineTotal = ceil(hours * 200.0 * selectedSeatsCount).toInt() // мок: ставка 200 руб/час — заменить на реальный тариф из БД
+            // базовая ставка: из пакета или стандартная
+            val baseRate = if (line.packageHours != null) packageRateMap[line.packageHours] ?: standardRate else standardRate
+            // итог = сумма по каждому месту: (baseRate + надбавка за тип) × часы
+            val lineTotal = lineSeats.sumOf { cartSeat ->
+                val seatTypePrice = seatPriceMap[cartSeat.seat.type] ?: standardRate
+                val surcharge = maxOf(0, seatTypePrice - standardRate)
+                ceil(hours * (baseRate + surcharge)).toInt()
+            }
             bookingTotal += lineTotal
-            bookingDrafts += line to lineTotal
+            bookingDrafts += Triple(line, lineTotal, baseRate)
         }
 
         // 3) Подсчёт суммы товаров
@@ -112,7 +133,7 @@ class CheckoutService(
         )
 
         // 5) Создаём bookings + booking_seats
-        bookingDrafts.forEach { (line, lineTotal) ->
+        bookingDrafts.forEach { (line, lineTotal, baseRate) ->
             val booking = bookingRepository.save(
                 BookingEntity(
                     user = user,
@@ -121,7 +142,7 @@ class CheckoutService(
                     startAt = line.startAt,
                     endAt = line.endAt,
                     packageHours = line.packageHours,
-                    rateRubPerHourSnapshot = 200,
+                    rateRubPerHourSnapshot = baseRate,
                     totalRubSnapshot = lineTotal,
                     status = BookingStatus.UPCOMING,
                     createdAt = LocalDateTime.now(),

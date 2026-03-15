@@ -2,7 +2,6 @@ package com.example.computerclub.ui.components
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
@@ -31,7 +30,6 @@ fun ClubBottomBar(
         BottomItem(Routes.Booking, Icons.Filled.DateRange, "Бронь"),
         BottomItem(Routes.Shop, Icons.Filled.List, "Товары"),
         BottomItem(Routes.Cart, Icons.Filled.ShoppingCart, "Корзина"),
-        BottomItem(Routes.History, Icons.Filled.History, "История"),
         BottomItem(Routes.Profile, Icons.Filled.Person, "Профиль"),
     )
 

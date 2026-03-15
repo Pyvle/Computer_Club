@@ -39,12 +39,18 @@ fun HistoryScreen(appVm: AppViewModel) {
 
     val all = appVm.purchaseHistory
 
-    // активное: есть будущая/активная бронь или заказ товаров не готов
+    // активные: есть бронь, которая ещё не началась или идёт прямо сейчас
+    // (purchase без броней — активен, пока заказ товаров не готов)
     val active = remember(all.size, now) {
         all.filter { p ->
-            val hasActiveBooking = p.bookingOrders.any { bookingStatus(now, it) != BookingStatus.DONE && bookingStatus(now, it) != BookingStatus.CANCELED }
-            val productsActive = p.productOrder?.status == ProductOrderStatus.NOT_READY
-            hasActiveBooking || productsActive
+            if (p.bookingOrders.isNotEmpty()) {
+                p.bookingOrders.any {
+                    val st = bookingStatus(now, it)
+                    st == BookingStatus.UPCOMING || st == BookingStatus.ACTIVE
+                }
+            } else {
+                p.productOrder?.status == ProductOrderStatus.NOT_READY
+            }
         }
     }
 

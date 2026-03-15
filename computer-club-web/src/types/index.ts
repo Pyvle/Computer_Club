@@ -368,6 +368,48 @@ export interface AuditLogResponse {
   after: unknown
 }
 
+export interface AdminTimePackageResponse {
+  id: number
+  name: string
+  hours: number
+  pricePerHourRub: number
+  totalPriceRub: number
+  isActive: boolean
+  sortOrder: number
+  /** "HH:mm" или null — без ограничения по времени */
+  availableFrom: string | null
+  availableTo: string | null
+}
+
+export interface CreateTimePackageRequest {
+  name: string
+  hours: number
+  pricePerHourRub: number
+  sortOrder?: number
+  availableFrom?: string | null
+  availableTo?: string | null
+}
+
+export interface UpdateTimePackageRequest {
+  name: string
+  hours: number
+  pricePerHourRub: number
+  isActive: boolean
+  sortOrder: number
+  availableFrom: string | null
+  availableTo: string | null
+}
+
+export interface AdminSeatPriceResponse {
+  seatType: string
+  pricePerHourRub: number
+}
+
+export interface UpsertSeatPriceRequest {
+  seatType: string
+  pricePerHourRub: number
+}
+
 export interface ClubDashboardResponse {
   activeBookingsCount: number
   upcomingTodayCount: number

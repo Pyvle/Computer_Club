@@ -31,10 +31,10 @@ class CartRepository(private val api: CartApi) {
         api.updateQty(lineId, clubId, UpdateCartProductQtyRequestDto(qty))
 
     suspend fun deleteProductLine(clubId: Long, lineId: Long): CartResponseDto =
-        api.deleteItem(clubId, type = "product", id = lineId)
+        api.deleteItem(type = "product", id = lineId, clubId = clubId)
 
     suspend fun deleteBookingLine(clubId: Long, lineId: Long): CartResponseDto =
-        api.deleteItem(clubId, type = "booking", id = lineId)
+        api.deleteItem(type = "booking", id = lineId, clubId = clubId)
 
     suspend fun clear(clubId: Long) = api.clear(clubId)
 }

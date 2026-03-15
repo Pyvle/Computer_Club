@@ -12,6 +12,7 @@ import {
   HomeOutlined,
   LogoutOutlined,
   SettingOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -22,6 +23,7 @@ const { Sider, Header, Content } = Layout
 const CLUB_NAV = [
   { key: 'dashboard', icon: <DashboardOutlined />, label: 'Дашборд' },
   { key: 'catalog', icon: <AppstoreOutlined />, label: 'Каталог' },
+  { key: 'time-packages', icon: <ClockCircleOutlined />, label: 'Пакеты времени' },
   { key: 'seats', icon: <EnvironmentOutlined />, label: 'Места' },
   { key: 'floorplans', icon: <LayoutOutlined />, label: 'Схемы зала' },
   { key: 'staff', icon: <TeamOutlined />, label: 'Персонал' },

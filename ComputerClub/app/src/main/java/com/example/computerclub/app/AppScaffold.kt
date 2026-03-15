@@ -23,7 +23,8 @@ fun AppScaffold(
             route.startsWith(Routes.Shop) ||
             route.startsWith(Routes.Cart) ||
             route.startsWith(Routes.History) ||
-            route.startsWith(Routes.Profile)
+            route.startsWith(Routes.Profile) ||
+            route.startsWith(Routes.About)
 
     // Топбар скрываем на "Клубы" и "Корзина"
     val showTopBar = showBottomBar &&
@@ -51,6 +52,7 @@ fun AppScaffold(
                     route.startsWith(Routes.Shop) -> "Товары и услуги"
                     route.startsWith(Routes.Cart) -> "Корзина"
                     route.startsWith(Routes.History) -> "История"
+                    route.startsWith(Routes.About) -> "О приложении"
                     route.startsWith(Routes.Profile) -> "Профиль"
                     else -> ""
                 }
@@ -68,9 +70,9 @@ fun AppScaffold(
                         nav.navigate("login_phone?from=$safeFrom")
                     },
                     hideAuthAction = route.startsWith(Routes.Profile),
-                    showBack = route.startsWith(Routes.BookingSeats) || route.startsWith(Routes.ShopSearch),
+                    showBack = route.startsWith(Routes.BookingSeats) || route.startsWith(Routes.ShopSearch) || route.startsWith(Routes.History) || route.startsWith(Routes.About),
                     onBack = {
-                        if (route.startsWith(Routes.ShopSearch)) {
+                        if (route.startsWith(Routes.ShopSearch) || route.startsWith(Routes.History) || route.startsWith(Routes.About)) {
                             nav.popBackStack()
                             return@ClubTopBar
                         }
@@ -86,12 +88,19 @@ fun AppScaffold(
                 val current = when {
                     route.startsWith(Routes.BookingSeats) -> Routes.Booking
                     route.startsWith(Routes.ShopSearch) -> Routes.Shop
+                    route.startsWith(Routes.History) -> Routes.Profile
+                    route.startsWith(Routes.About) -> Routes.Profile
                     else -> route.substringBefore("?")
                 }
 
                 ClubBottomBar(
                     currentRoute = current,
                     onNavigate = { dest ->
+                        // история открыта поверх профиля — кнопка Профиль просто возвращает назад
+                        if (route.startsWith(Routes.History) && dest == Routes.Profile) {
+                            nav.popBackStack()
+                            return@ClubBottomBar
+                        }
                         if (dest == current) return@ClubBottomBar
 
                         if (dest == Routes.Booking) {

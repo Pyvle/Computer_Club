@@ -9,6 +9,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -72,9 +74,11 @@ fun BookingSetupScreen(
         appVm.clubs.firstOrNull { it.id == draft.clubId }
     }
 
-    // загружаем места и доступность — нужно для "Быстрой брони"
+    // загружаем места, доступность, пакеты времени и цены мест
     LaunchedEffect(draft.clubId, appVm.user) {
         appVm.loadSeatsAndAvailability(force = true)
+        appVm.loadTimePackages(force = false)
+        appVm.loadSeatPrices(force = false)
     }
     LaunchedEffect(draft.startDayOffset, draft.startMin, draft.endDayOffset, draft.endMin) {
         appVm.loadSeatsAndAvailability(force = false)
@@ -186,11 +190,13 @@ fun BookingSetupScreen(
     }
 
     Box(Modifier.fillMaxSize()) {
+        // прокручиваемый контент с отступом снизу для кнопок
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 120.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             // --- КЛУБ ---
             Card {
@@ -249,17 +255,37 @@ fun BookingSetupScreen(
             )
 
             // --- ПАКЕТЫ ВРЕМЕНИ ---
-            TimePackagesRow(
-                selectedPackageHours = draft.packageHours,
-                onPickPackageHours = { hours ->
-                    // фиксируем длительность = пакет; конец подстраивается
-                    appVm.applyTimePackage(hours)
-                }
-            )
+            if (appVm.timePackages.isNotEmpty() || appVm.standardRateRubPerHour != null) {
+                TimePackagesRow(
+                    packages = appVm.timePackages,
+                    selectedPackageHours = draft.packageHours,
+                    standardRateRubPerHour = appVm.standardRateRubPerHour,
+                    onPickPackage = { pkg ->
+                        val startAbsMin = draft.startDayOffset * DAY_MIN + draft.startMin
+                        val startMinOfDay = Math.floorMod(startAbsMin, DAY_MIN)
+                        val from = pkg.availableFrom
+                        val to = pkg.availableTo
+                        // если выбранное время вне окна пакета — перематываем старт на ближайший availableFrom
+                        if (from != null && to != null && !isPackageAvailableAt(from, to, startMinOfDay)) {
+                            val f = parseHhmm(from)
+                            if (f != null) setStartKeepingDuration(findNearestValidStart(startAbsMin, f))
+                        }
+                        appVm.applyTimePackage(pkg.hours)
+                    },
+                    onPickStandard = { appVm.resetTimePackage() }
+                )
+            }
+        }
 
-            Spacer(Modifier.weight(1f))
-
-            OutlinedButton(
+        // кнопки всегда видны внизу экрана
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            FilledTonalButton(
                 onClick = {
                     val ok = appVm.quickBookOneSeat()
                     if (ok) {
@@ -299,32 +325,104 @@ fun BookingSetupScreen(
 
 @Composable
 private fun TimePackagesRow(
+    packages: List<com.example.computerclub.data.network.dto.TimePackageResponseDto>,
     selectedPackageHours: Int?,
-    onPickPackageHours: (Int) -> Unit
+    standardRateRubPerHour: Int?,
+    onPickPackage: (com.example.computerclub.data.network.dto.TimePackageResponseDto) -> Unit,
+    onPickStandard: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Пакеты времени", style = MaterialTheme.typography.titleSmall)
+    val scrollState = rememberScrollState()
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            TimePackageCard(
-                modifier = Modifier.weight(1f),
-                title = "3 часа",
-                pricePerHour = "90 ₽/ч",
-                selected = selectedPackageHours == 3,
-                onClick = { onPickPackageHours(3) }
-            )
-            TimePackageCard(
-                modifier = Modifier.weight(1f),
-                title = "5 часов",
-                pricePerHour = "80 ₽/ч",
-                selected = selectedPackageHours == 5,
-                onClick = { onPickPackageHours(5) }
-            )
+    ElevatedCard {
+        Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Пакеты времени", style = MaterialTheme.typography.titleSmall)
+
+            // сетка 2 колонки с вертикальной прокруткой — карточки не уменьшаются
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 210.dp)
+                    .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // стандартный пакет всегда первым, если задана цена
+                val allItems: List<Any?> = buildList {
+                    if (standardRateRubPerHour != null) add(null) // null = стандартный
+                    addAll(packages)
+                }
+
+                allItems.chunked(2).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        row.forEach { item ->
+                            if (item == null) {
+                                // стандартный пакет
+                                TimePackageCard(
+                                    modifier = Modifier.weight(1f),
+                                    title = "Стандартный",
+                                    pricePerHour = "${standardRateRubPerHour} ₽/ч",
+                                    scheduleLabel = null,
+                                    selected = selectedPackageHours == null,
+                                    onClick = onPickStandard
+                                )
+                            } else {
+                                val pkg = item as com.example.computerclub.data.network.dto.TimePackageResponseDto
+                                val scheduleLabel = if (pkg.availableFrom != null && pkg.availableTo != null)
+                                    "${pkg.availableFrom} – ${pkg.availableTo}" else null
+                                TimePackageCard(
+                                    modifier = Modifier.weight(1f),
+                                    title = pkg.name,
+                                    pricePerHour = "${pkg.pricePerHourRub} ₽/ч",
+                                    scheduleLabel = scheduleLabel,
+                                    selected = selectedPackageHours == pkg.hours,
+                                    onClick = { onPickPackage(pkg) }
+                                )
+                            }
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
         }
     }
+}
+
+/**
+ * Проверяет, доступен ли пакет в указанное время суток.
+ *
+ * @param from "HH:mm" или null
+ * @param to   "HH:mm" или null. Может быть меньше from — тогда окно переходит через полночь.
+ * @param startMinOfDay минуты от начала суток (0..1439)
+ */
+private fun isPackageAvailableAt(from: String?, to: String?, startMinOfDay: Int): Boolean {
+    if (from == null || to == null) return true
+    val f = parseHhmm(from) ?: return true
+    val t = parseHhmm(to) ?: return true
+    return if (f <= t) {
+        startMinOfDay in f..t
+    } else {
+        // окно переходит через полночь: 22:00–06:00
+        startMinOfDay >= f || startMinOfDay <= t
+    }
+}
+
+private fun parseHhmm(s: String): Int? {
+    val parts = s.split(":")
+    if (parts.size != 2) return null
+    val h = parts[0].toIntOrNull() ?: return null
+    val m = parts[1].toIntOrNull() ?: return null
+    return h * 60 + m
+}
+
+/**
+ * Возвращает ближайший абсолютный момент >= currentAbsMin,
+ * когда время суток равно fromMinOfDay (начало окна пакета).
+ */
+private fun findNearestValidStart(currentAbsMin: Int, fromMinOfDay: Int): Int {
+    val dayOffset = Math.floorDiv(currentAbsMin, DAY_MIN)
+    val sameDayAbs = dayOffset * DAY_MIN + fromMinOfDay
+    return if (sameDayAbs >= currentAbsMin) sameDayAbs else sameDayAbs + DAY_MIN
 }
 
 @Composable
@@ -332,14 +430,19 @@ private fun TimePackageCard(
     modifier: Modifier,
     title: String,
     pricePerHour: String,
+    scheduleLabel: String?,
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val onContainer = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+    val onContainerVariant = if (selected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+        else MaterialTheme.colorScheme.onSurfaceVariant
+
     OutlinedCard(
-        modifier = modifier.height(52.dp),
+        modifier = modifier,
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(
-            1.dp,
+            1.5.dp,
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
         ),
         colors = CardDefaults.outlinedCardColors(
@@ -349,23 +452,32 @@ private fun TimePackageCard(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(vertical = 6.dp),
-            verticalArrangement = Arrangement.Center,
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 textAlign = TextAlign.Center,
-                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                maxLines = 2,
+                color = onContainer
             )
             Text(
                 pricePerHour,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
-                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                color = onContainer
             )
+            if (scheduleLabel != null) {
+                Text(
+                    scheduleLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = TextAlign.Center,
+                    color = onContainerVariant
+                )
+            }
         }
     }
 }

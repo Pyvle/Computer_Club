@@ -309,10 +309,44 @@ fun BookingSeatsScreen(
             }
 
             // --- Низ ---
-            Text(
-                text = selectedSeatsLabel(draft.selectedSeatIds, seats),
-                style = MaterialTheme.typography.bodyLarge
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = selectedSeatsLabel(draft.selectedSeatIds, seats),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                if (draft.selectedSeatIds.isNotEmpty()) {
+                    val total = appVm.bookingTotalRub(draft.selectedSeatIds)
+                    Text(
+                        text = "${total} ₽",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            // подсказка о надбавке за VIP, если выбраны VIP-места
+            val selectedSeats = remember(draft.selectedSeatIds, seats) {
+                seats.filter { draft.selectedSeatIds.contains(it.id) }
+            }
+            val hasVip = selectedSeats.any { it.type == com.example.computerclub.model.SeatType.VIP }
+            val hasRegular = selectedSeats.any { it.type != com.example.computerclub.model.SeatType.VIP }
+            if (hasVip && appVm.seatPrices.isNotEmpty()) {
+                val regularRate = appVm.effectiveRateForSeatType(com.example.computerclub.model.SeatType.REGULAR)
+                val vipRate = appVm.effectiveRateForSeatType(com.example.computerclub.model.SeatType.VIP)
+                val hint = if (hasRegular)
+                    "Обычное: $regularRate ₽/ч · VIP: $vipRate ₽/ч"
+                else
+                    "VIP: $vipRate ₽/ч"
+                Text(
+                    text = hint,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             Button(
                 onClick = {

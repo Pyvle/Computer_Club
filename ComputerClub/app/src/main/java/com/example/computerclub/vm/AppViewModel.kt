@@ -12,13 +12,18 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.Duration
 import java.time.LocalTime
+import kotlin.math.ceil
 import android.app.Application
 import android.content.pm.ApplicationInfo
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.computerclub.data.local.NotifPrefsStore
 import com.example.computerclub.data.local.TokenStore
 import com.example.computerclub.data.network.NetworkClient
+import com.example.computerclub.notifications.NotificationScheduler
 import com.example.computerclub.data.repository.AuthRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import com.example.computerclub.data.repository.ClubsRepository
 import com.example.computerclub.data.repository.CatalogRepository
@@ -80,6 +85,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val seatRepo = SeatRepository(network.seatApi)
     private val floorplanRepo = FloorplanRepository(network.floorplanApi)
     private val favoritesRepo = FavoritesRepository(network.favoritesApi)
+    private val notifPrefsStore = NotifPrefsStore(getApplication())
+    private val timePackageApi = network.timePackageApi
+    private val seatPriceApi = network.seatPriceApi
+
+    // --- Уведомления ---
+    var notificationsEnabled: Boolean by mutableStateOf(notifPrefsStore.peek())
+        private set
+
+    fun updateNotifications(enabled: Boolean) {
+        notificationsEnabled = enabled
+        viewModelScope.launch { notifPrefsStore.setEnabled(enabled) }
+        if (!enabled) {
+            // отменяем все запланированные напоминания
+            androidx.work.WorkManager.getInstance(getApplication()).cancelAllWorkByTag("booking_reminder")
+        }
+    }
 
     private fun selectedClubIdLongOrNull(): Long? =
         selectedClubId.toLongOrNull() ?: selectedClubId.removePrefix("c").toLongOrNull()
@@ -142,6 +163,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
                 loadClubs(force = true)
                 loadShopData(force = true)
+                loadTimePackages(force = true)
                 syncCartProducts(force = true)
                 loadFavorites()
                 onSuccess()
@@ -178,6 +200,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var clubsError: String? by mutableStateOf(null)
         private set
 
+    // --- Пакеты времени ---
+    var timePackages: List<com.example.computerclub.data.network.dto.TimePackageResponseDto> by mutableStateOf(emptyList())
+        private set
+
+    // --- Цены за места ---
+    var seatPrices: List<com.example.computerclub.data.network.dto.SeatPriceResponseDto> by mutableStateOf(emptyList())
+        private set
+
+    /** Минимальная цена за час по всем типам мест — стандартный тариф. */
+    val standardRateRubPerHour: Int?
+        get() = seatPrices.minOfOrNull { it.pricePerHourRub }
+
     // --- Shop (server) ---
     var shopCategories: List<ProductCategory> by mutableStateOf(emptyList())
         private set
@@ -213,6 +247,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // флаг: для какого клуба уже выполнена первичная синхронизация корзины
     private var cartSyncedClubId: String? = null
+
+    // активная джоба синхронизации — отменяется при любой мутации корзины
+    private var cartSyncJob: Job? = null
+
+    // true после любой мутации корзины (добавление/удаление/изменение qty);
+    // предотвращает перезапись локальных изменений автоматической синхронизацией
+    private var localCartModified = false
 
     var clubConfirmed: Boolean by mutableStateOf(false)
         private set
@@ -285,11 +326,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         clubConfirmed = false
         editingBookingId = null
 
-        // reset seat cache when switching clubs
         clubSeats = emptyList()
         busySeatIds = emptySet()
         seatsError = null
         cartSyncedClubId = null
+        localCartModified = false
     }
 
     fun confirmClub() { clubConfirmed = true }
@@ -308,6 +349,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 clearAllCarts()
                 favoriteClubIds.clear()
                 cartSyncedClubId = null
+                localCartModified = false
                 // перезагружаем клубы через публичный /clubs без blocked-статусов,
                 // чтобы не показывать "Заблокирован" после выхода
                 loadClubs(force = true)
@@ -317,6 +359,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun applyServerCartProducts(cart: CartResponseDto) {
         val lines = cartFor(selectedClubId).productLines
+        Log.d("Cart", "applyServerCartProducts: replacing ${lines.size} items with ${cart.products.size} from server")
         lines.clear()
         cart.products.forEach { p ->
             lines.add(
@@ -326,7 +369,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     price = p.priceRub,
                     variant = null,
                     qty = p.qty,
-                    lineId = p.lineId
+                    lineId = p.lineId,
+                    clubId = selectedClubId
                 )
             )
         }
@@ -355,6 +399,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     seatIds = b.seatIds.map { it.toString() }
                 )
             )
+        }
+    }
+
+    fun loadTimePackages(force: Boolean = false) {
+        val clubIdLong = selectedClubIdLongOrNull() ?: return
+        if (!force && timePackages.isNotEmpty()) return
+        viewModelScope.launch {
+            try {
+                timePackages = timePackageApi.getPackages(clubIdLong)
+            } catch (_: Exception) {
+                // сохраняем предыдущие пакеты если сервер недоступен
+            }
+        }
+    }
+
+    fun loadSeatPrices(force: Boolean = false) {
+        val clubIdLong = selectedClubIdLongOrNull() ?: return
+        if (!force && seatPrices.isNotEmpty()) return
+        viewModelScope.launch {
+            try {
+                seatPrices = seatPriceApi.getPrices(clubIdLong)
+            } catch (_: Exception) {
+                // не критично: стандартный пакет просто не отображается
+            }
         }
     }
 
@@ -396,22 +464,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Синхронизирует товары серверной корзины в локальный cartLines. */
+    /** Синхронизирует корзину с сервером.
+     * Auto-sync (force=false) пропускается если пользователь уже менял корзину локально —
+     * это предотвращает перезапись оптимистичных удалений/добавлений данными с сервера.
+     */
     fun syncCartProducts(force: Boolean = false) {
         val clubIdLong = selectedClubIdLongOrNull() ?: return
         if (user == null) return
         if (cartSyncLoading) return
         if (!force && cartSyncedClubId == selectedClubId) return
+        // после любой локальной мутации auto-sync не трогает корзину
+        if (!force && localCartModified) return
 
         cartSyncLoading = true
         cartSyncError = null
 
-        viewModelScope.launch {
+        cartSyncJob = viewModelScope.launch {
             try {
                 val cart = cartRepo.getOrCreate(clubIdLong)
+                // при force-sync (логин, смена клуба, отмена покупки) сбрасываем флаг
+                // и доверяем серверу; при auto-sync сюда не доходим (заблокировано выше)
+                localCartModified = false
                 applyServerCartProducts(cart)
                 applyServerCartBookings(cart)
                 cartSyncedClubId = selectedClubId
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
             } catch (e: HttpException) {
                 cartSyncError = "Ошибка корзины: ${e.code()}"
             } catch (e: Exception) {
@@ -667,14 +745,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return out
     }
 
+    /** Берёт clubId из самой строки корзины; selectedClubId — только запасной вариант. */
+    private fun resolveClubIdLongOrNull(line: CartProductLine): Long? =
+        line.clubId?.toLongOrNull()
+            ?: line.clubId?.removePrefix("c")?.toLongOrNull()
+            ?: selectedClubIdLongOrNull()
+
     fun addProduct(product: Product, variant: String?) {
         val lines = cartFor(selectedClubId).productLines
         val idx = lines.indexOfFirst { it.productId == product.id && it.variant == variant }
         val prev = if (idx >= 0) lines[idx] else null
 
         // оптимистичное обновление — UI реагирует мгновенно
-        if (idx < 0) lines.add(CartProductLine(product.id, product.title, product.price, variant, 1))
+        if (idx < 0) lines.add(CartProductLine(product.id, product.title, product.price, variant, 1, clubId = selectedClubId))
         else lines[idx] = lines[idx].copy(qty = lines[idx].qty + 1)
+
+        // после мутации auto-sync не должен перезаписывать локальное состояние
+        localCartModified = true
+        cartSyncJob?.cancel()
+        cartSyncJob = null
 
         val clubIdLong = selectedClubIdLongOrNull()
         val productIdLong = product.id.toLongOrNull()
@@ -683,9 +772,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             viewModelScope.launch {
                 try {
                     val cart = cartRepo.addProduct(clubIdLong, productIdLong, 1)
-                    applyServerCartProducts(cart)
-                } catch (_: Exception) {
-                    // откат при ошибке
+                    val serverLine = cart.products.firstOrNull { it.productId == productIdLong }
+                    if (serverLine != null) {
+                        val curIdx = lines.indexOfFirst { it.productId == product.id && it.variant == variant }
+                        if (curIdx < 0) {
+                            // строку уже удалили локально пока летел запрос — убираем и на сервере
+                            Log.d("Cart", "addProduct: line removed locally before response, deleting from server lineId=${serverLine.lineId}")
+                            runCatching { cartRepo.deleteProductLine(clubIdLong, serverLine.lineId) }
+                        } else {
+                            val currentLine = lines[curIdx]
+                            lines[curIdx] = currentLine.copy(lineId = serverLine.lineId)
+                            // если qty уже изменилось пока запрос летел — синхронизируем
+                            if (currentLine.qty != serverLine.qty) {
+                                Log.d("Cart", "addProduct: qty drifted local=${currentLine.qty} server=${serverLine.qty}, syncing")
+                                runCatching { cartRepo.updateQty(clubIdLong, serverLine.lineId, currentLine.qty) }
+                            }
+                        }
+                    }
+                } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("Cart", "addProduct failed: productId=${product.id}", e)
                     val rollbackIdx = lines.indexOfFirst { it.productId == product.id && it.variant == variant }
                     if (rollbackIdx >= 0) {
                         if (prev == null) lines.removeAt(rollbackIdx)
@@ -699,36 +806,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun changeQty(productId: String, variant: String?, delta: Int) {
         val lines = cartFor(selectedClubId).productLines
         val idx = lines.indexOfFirst { it.productId == productId && it.variant == variant }
-        if (idx < 0) return
+        Log.d("Cart", "changeQty: productId=$productId variant=$variant delta=$delta idx=$idx listSize=${lines.size}")
+        if (idx < 0) {
+            Log.w("Cart", "changeQty: item not found in list, returning")
+            return
+        }
 
         val cur = lines[idx]
         val newQty = (cur.qty + delta).coerceAtLeast(0)
+        Log.d("Cart", "changeQty: curQty=${cur.qty} newQty=$newQty lineId=${cur.lineId}")
 
         // оптимистичное обновление — UI реагирует мгновенно
-        if (newQty == 0) lines.removeAt(idx) else lines[idx] = cur.copy(qty = newQty)
+        if (newQty == 0) {
+            lines.removeAt(idx)
+            Log.d("Cart", "changeQty: removed item, listSize=${lines.size}")
+        } else {
+            lines[idx] = cur.copy(qty = newQty)
+        }
 
-        val clubIdLong = selectedClubIdLongOrNull()
+        // после мутации auto-sync не должен перезаписывать локальное состояние
+        localCartModified = true
+        cartSyncJob?.cancel()
+        cartSyncJob = null
+
+        // берём clubId из самой строки, а не из selectedClubId — пользователь мог уже сменить клуб
+        val clubIdLong = resolveClubIdLongOrNull(cur)
         val lineId = cur.lineId
 
         if (user != null && clubIdLong != null && lineId != null && variant == null) {
             viewModelScope.launch {
                 try {
-                    val cart = if (newQty <= 0) {
+                    if (newQty <= 0) {
+                        Log.d("Cart", "changeQty: calling server DELETE lineId=$lineId")
                         cartRepo.deleteProductLine(clubIdLong, lineId)
+                        Log.d("Cart", "changeQty: server DELETE success")
                     } else {
                         cartRepo.updateQty(clubIdLong, lineId, newQty)
                     }
-                    applyServerCartProducts(cart)
-                } catch (_: Exception) {
-                    // откат при ошибке
-                    val rollbackIdx = lines.indexOfFirst { it.productId == productId && it.variant == variant }
-                    if (newQty == 0) {
-                        if (rollbackIdx < 0) lines.add(cur)
-                    } else {
+                } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("Cart", "changeQty server failed: lineId=$lineId qty=$newQty", e)
+                    // откат только для изменения кол-ва, НЕ для удаления
+                    if (newQty > 0) {
+                        val rollbackIdx = lines.indexOfFirst { it.productId == productId && it.variant == variant }
                         if (rollbackIdx >= 0) lines[rollbackIdx] = cur
                     }
                 }
             }
+        } else {
+            Log.d("Cart", "changeQty: skipping server call user=${user != null} club=$clubIdLong lineId=$lineId variant=$variant")
         }
     }
 
@@ -845,6 +972,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val before = cartRepo.getOrCreate(clubIdLong)
                 val beforeIds = before.bookings.map { it.lineId }.toSet()
 
+                // брони, которые есть на сервере, но уже удалены пользователем локально —
+                // удаляем их перед добавлением новой, иначе сервер вернёт 400 (конфликт слота)
+                val localBookingIds = cartFor(selectedClubId).bookingLines.map { it.id }.toSet()
+                before.bookings
+                    .filter { it.lineId.toString() !in localBookingIds }
+                    .forEach { runCatching { cartRepo.deleteBookingLine(clubIdLong, it.lineId) } }
+
                 // при редактировании сначала удаляем старую строку — бэкенд не поддерживает PATCH для интервала
                 val editingIdLong = editingBookingId?.toLongOrNull()
                 if (editingIdLong != null) {
@@ -866,14 +1000,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
                 val afterSeats = cartRepo.setBookingSeats(clubIdLong, newLineId, seatIdsLong)
 
-                applyServerCartProducts(afterSeats)
-                applyServerCartBookings(afterSeats)
+                // добавляем только новую бронь в локальный список, не трогая продукты
+                // и ранее удалённые брони — полная замена через applyServerCart* восстанавливала бы их
+                val newDto = afterSeats.bookings.firstOrNull { it.lineId == newLineId }
+                val bookingLines = cartFor(selectedClubId).bookingLines
+                if (editingIdLong != null) {
+                    bookingLines.removeAll { it.id == editingIdLong.toString() }
+                }
+                if (newDto != null) {
+                    val s = LocalDateTime.parse(newDto.startAt)
+                    val e2 = LocalDateTime.parse(newDto.endAt)
+                    val baseDate = s.toLocalDate()
+                    bookingLines.add(
+                        CartBookingLine(
+                            id = newDto.lineId.toString(),
+                            clubId = selectedClubId,
+                            date = baseDate,
+                            startDayOffset = 0,
+                            startMin = s.hour * 60 + s.minute,
+                            endDayOffset = ChronoUnit.DAYS.between(baseDate, e2.toLocalDate()).toInt().coerceAtLeast(0),
+                            endMin = e2.hour * 60 + e2.minute,
+                            packageHours = newDto.packageHours,
+                            seatIds = newDto.seatIds.map { it.toString() }
+                        )
+                    )
+                }
 
                 editingBookingId = null
                 bookingDraft = d.copy(selectedSeatIds = emptySet())
                 onResult(CommitResult(true))
             } catch (e: HttpException) {
-                onResult(CommitResult(false, "Ошибка брони: ${e.code()}"))
+                val msg = when (e.code()) {
+                    400 -> "Место уже занято на это время. Удали старую бронь из корзины и попробуй снова."
+                    409 -> "Конфликт бронирования: это место уже занято."
+                    else -> "Ошибка брони: ${e.code()}"
+                }
+                onResult(CommitResult(false, msg))
             } catch (e: Exception) {
                 onResult(CommitResult(false, e.message ?: "Не удалось добавить бронь"))
             }
@@ -969,18 +1131,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         cartsByClub.values.forEach { it.bookingLines.removeAll { line -> line.id == id } }
         if (editingBookingId == id) editingBookingId = null
 
-        val clubIdLong = selectedClubIdLongOrNull()
+        // после мутации auto-sync не должен перезаписывать локальное состояние
+        localCartModified = true
+        cartSyncJob?.cancel()
+        cartSyncJob = null
+
+        // убираем освобождённые места из busySeatIds чтобы "Быстрая бронь" сразу видела их свободными
+        if (removed != null) {
+            val startDt = lineStartDateTime(removed)
+            val endDt = lineEndDateTime(removed)
+            val stillOccupied = cartFor(removed.clubId).bookingLines
+                .flatMap { line ->
+                    if (intervalsOverlap(startDt, endDt, lineStartDateTime(line), lineEndDateTime(line)))
+                        line.seatIds else emptyList()
+                }
+                .toSet()
+            busySeatIds = busySeatIds - (removed.seatIds.toSet() - stillOccupied)
+        }
+
+        // берём clubId из самой брони, а не из selectedClubId — пользователь мог уже сменить клуб
+        val clubIdLong = removed?.clubId?.toLongOrNull()
+            ?: removed?.clubId?.removePrefix("c")?.toLongOrNull()
+            ?: selectedClubIdLongOrNull()
         val lineIdLong = id.toLongOrNull()
 
         if (user != null && clubIdLong != null && lineIdLong != null) {
             viewModelScope.launch {
                 try {
-                    val cart = cartRepo.deleteBookingLine(clubIdLong, lineIdLong)
-                    applyServerCartProducts(cart)
-                    applyServerCartBookings(cart)
-                } catch (_: Exception) {
-                    // откат при ошибке
-                    if (removed != null) cartFor(removed.clubId).bookingLines.add(removed)
+                    cartRepo.deleteBookingLine(clubIdLong, lineIdLong)
+                } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // не откатываем: пользователь хотел удалить бронь,
+                    // синхронизация восстановит при необходимости
+                    Log.e("Cart", "removeBooking failed: lineId=$lineIdLong", e)
                 }
             }
         }
@@ -1060,6 +1244,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /** Сброс пакета — переход на стандартный тариф без фиксированной длительности. */
+    fun resetTimePackage() {
+        bookingDraft = bookingDraft.copy(packageHours = null)
+    }
+
     fun toggleSeat(seatId: String) {
         val set = bookingDraft.selectedSeatIds.toMutableSet()
         if (set.contains(seatId)) set.remove(seatId) else set.add(seatId)
@@ -1075,9 +1264,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun quickBookOneSeat(): Boolean {
         val d = bookingDraft
         if (clubSeats.isEmpty()) return false
+        val startDt = startDateTime(d)
+        val endDt = endDateTime(d)
+
+        // места, уже занятые бронями пользователя в корзине на это время
+        val cartConflictSeats = cartFor(d.clubId).bookingLines
+            .filter { line -> intervalsOverlap(startDt, endDt, lineStartDateTime(line), lineEndDateTime(line)) }
+            .flatMap { it.seatIds }
+            .toSet()
+
+        // сортируем: сначала явно свободные по серверу, затем возможно освобождённые нами
         val free = clubSeats
             .filter { it.hasPc }
-            .firstOrNull { it.id !in busySeatIds }
+            .filter { it.id !in cartConflictSeats }
+            .sortedBy { if (it.id in busySeatIds) 1 else 0 }
+            .firstOrNull()
             ?: return false
 
         bookingDraft = d.copy(selectedSeatIds = setOf(free.id))
@@ -1178,6 +1379,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 cartFor(selectedClubId).bookingLines.clear()
                 // Немедленная оплата (CREATED → PAID)
                 try { checkoutRepo.payPurchase(resp.purchaseId) } catch (_: Exception) { }
+                // планируем уведомления за 30 мин до каждой брони
+                if (notificationsEnabled) {
+                    try {
+                        val details = checkoutRepo.getPurchaseDetails(resp.purchaseId)
+                        val clubName = clubs.firstOrNull { it.id == details.clubId.toString() }?.name ?: "Клуб"
+                        details.bookingItems.forEach { b ->
+                            NotificationScheduler.scheduleBookingReminder(
+                                context = getApplication(),
+                                bookingId = b.bookingId.toString(),
+                                clubName = clubName,
+                                startAt = LocalDateTime.parse(b.startAt)
+                            )
+                        }
+                    } catch (_: Exception) { }
+                }
                 loadPurchaseHistory()
                 onSuccess(resp.purchaseId)
             } catch (e: Exception) {
@@ -1219,6 +1435,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelPurchase(purchaseId: Long, onSuccess: () -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch {
             try {
+                // отменяем напоминания до запроса на сервер, пока purchase ещё в истории
+                purchaseHistory
+                    .firstOrNull { it.id == purchaseId.toString() }
+                    ?.bookingOrders
+                    ?.forEach { b -> NotificationScheduler.cancelBookingReminder(getApplication(), b.id) }
                 checkoutRepo.cancelPurchase(purchaseId)
                 loadPurchaseHistory()
                 // сразу сбрасываем локальный кэш занятости и корзины — иначе экран мест
@@ -1399,6 +1620,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         if (user != null) {
             loadShopData(force = true)
+            loadTimePackages(force = true)
             syncCartProducts(force = true)
         }
     }
@@ -1451,14 +1673,46 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Тариф (₽/ч) по выбранному пакету.
-     * null => стандартный тариф.
+     * null => стандартный тариф (первый в списке или дефолтный).
      */
     fun bookingRateRubPerHour(packageHours: Int?): Int {
-        return when (packageHours) {
-            3 -> RATE_PKG_3H_RUB_PER_HOUR
-            5 -> RATE_PKG_5H_RUB_PER_HOUR
-            else -> RATE_STANDARD_RUB_PER_HOUR
+        if (packageHours != null) {
+            val pkg = timePackages.firstOrNull { it.hours == packageHours }
+            if (pkg != null) return pkg.pricePerHourRub
         }
+        // стандартный тариф: минимальная цена места → первый пакет → константа
+        return standardRateRubPerHour ?: timePackages.firstOrNull()?.pricePerHourRub ?: RATE_STANDARD_RUB_PER_HOUR
+    }
+
+    /**
+     * Эффективная ставка ₽/ч для конкретного типа места с учётом выбранного пакета.
+     *
+     * Формула: baseRate + max(0, seatTypePrice - standardRate)
+     * Пример: пакет 80 ₽/ч, стандарт 100 ₽/ч, VIP 110 ₽/ч → VIP = 80 + (110-100) = 90 ₽/ч
+     */
+    fun effectiveRateForSeatType(seatType: com.example.computerclub.model.SeatType): Int {
+        val standard = standardRateRubPerHour ?: RATE_STANDARD_RUB_PER_HOUR
+        val baseRate = bookingRateRubPerHour(bookingDraft.packageHours)
+        val seatTypePrice = seatPrices.firstOrNull { it.seatType == seatType.name }?.pricePerHourRub ?: standard
+        val surcharge = maxOf(0, seatTypePrice - standard)
+        return baseRate + surcharge
+    }
+
+    /** Итоговая стоимость бронирования для набора выбранных мест. */
+    fun bookingTotalRub(selectedSeatIds: Set<String>): Int {
+        if (selectedSeatIds.isEmpty()) return 0
+        val durationHours = bookingDurationHours(bookingDraft)
+        return selectedSeatIds.sumOf { seatId ->
+            val seat = clubSeats.firstOrNull { it.id == seatId }
+            val rate = if (seat != null) effectiveRateForSeatType(seat.type) else bookingRateRubPerHour(bookingDraft.packageHours)
+            ceil(durationHours * rate).toInt()
+        }
+    }
+
+    private fun bookingDurationHours(d: BookingDraft): Double {
+        val startAbs = d.startDayOffset * DAY_MIN + d.startMin
+        val endAbs = d.endDayOffset * DAY_MIN + d.endMin
+        return (endAbs - startAbs).coerceAtLeast(0) / 60.0
     }
 
     /** Удобный оверлоад для текущего черновика. */

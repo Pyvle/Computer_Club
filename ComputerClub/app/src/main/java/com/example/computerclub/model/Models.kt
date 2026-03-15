@@ -62,7 +62,9 @@ data class CartProductLine(
     val variant: String?,
     val qty: Int,
     // id строки в серверной корзине (null для локальных/мок-строк)
-    val lineId: Long? = null
+    val lineId: Long? = null,
+    // клуб, к которому относится строка (нужен для удаления/изменения при смене selectedClubId)
+    val clubId: String? = null
 )
 
 /**

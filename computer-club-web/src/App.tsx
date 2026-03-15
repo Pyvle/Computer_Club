@@ -25,6 +25,7 @@ import ClubUserBlocksPage from './pages/club-user-blocks/ClubUserBlocksPage'
 import ClubApplicationsPage from './pages/club-applications/ClubApplicationsPage'
 import GlobalCatalogPage from './pages/global-catalog/GlobalCatalogPage'
 import UsersPage from './pages/users/UsersPage'
+import ClubTimePackagesPage from './pages/club-time-packages/ClubTimePackagesPage'
 
 const Placeholder = ({ name }: { name: string }) => (
   <div style={{ padding: 24, color: '#999' }}>{name} — в разработке</div>
@@ -69,6 +70,7 @@ export default function App() {
                   <Route path="/admin/club/:clubId/user-blocks" element={<ClubUserBlocksPage />} />
                   <Route path="/admin/club/:clubId/audit" element={<ClubAuditPage />} />
                   <Route path="/admin/club/:clubId/settings" element={<ClubSettingsPage />} />
+                  <Route path="/admin/club/:clubId/time-packages" element={<ClubTimePackagesPage />} />
                   <Route path="/admin/club/:clubId/*" element={<Placeholder name="Панель клуба" />} />
                 </Route>
               </Route>

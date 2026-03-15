@@ -67,12 +67,6 @@ fun ShopScreen(
     val categories = appVm.shopCategories
     val products = appVm.shopProducts
 
-    LaunchedEffect(categories) {
-        if (selectedCategoryId.isBlank() && categories.isNotEmpty()) {
-            selectedCategoryId = categories.first().id
-        }
-    }
-
     if (club?.isBlocked == true) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Вы заблокированы в этом клубе. Выберите другой клуб.")
@@ -107,7 +101,7 @@ fun ShopScreen(
     // чтобы заголовок был ниже липких чипов, offset должен быть отрицательным
     fun scrollOffsetForHeader(): Int = -chipsTotalPx()
 
-    // Категории не скрываем — фильтруем только товары
+    // скрываем категории без товаров (нет товаров вообще или нет совпадений по поиску)
     val sectionsAll = remember(query, categories, products) {
         categories.map { cat ->
             val list = products
@@ -118,6 +112,14 @@ fun ShopScreen(
                             it.description.contains(query, ignoreCase = true)
                 }
             cat to list
+        }.filter { (_, list) -> list.isNotEmpty() }
+    }
+
+    val visibleCategories = remember(sectionsAll) { sectionsAll.map { it.first } }
+
+    LaunchedEffect(visibleCategories) {
+        if (selectedCategoryId.isBlank() && visibleCategories.isNotEmpty()) {
+            selectedCategoryId = visibleCategories.first().id
         }
     }
 
@@ -163,7 +165,7 @@ fun ShopScreen(
 
     // подсветка категории при скролле по "линии под чипами"
     LaunchedEffect(listState, headerIndexByCatId, chipsHeightPx) {
-        val headers = categories.mapNotNull { cat ->
+        val headers = visibleCategories.mapNotNull { cat ->
             headerIndexByCatId[cat.id]?.let { cat.id to it }
         }.sortedBy { it.second }
 
@@ -246,7 +248,7 @@ fun ShopScreen(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(categories, key = { it.id }) { cat ->
+                        items(visibleCategories, key = { it.id }) { cat ->
                             FilterChip(
                                 selected = selectedCategoryId == cat.id,
                                 onClick = { scope.launch { animateToCategory(cat.id) } },
@@ -267,34 +269,37 @@ fun ShopScreen(
                     )
                 }
 
-                if (list.isEmpty()) {
-                    item(key = "empty_${cat.id}") {
-                        if (query.isNotBlank()) {
-                            Text(
-                                text = "Нет совпадений",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 6.dp)
+                val rows = list.chunked(2)
+                rows.forEachIndexed { rowIndex, rowItems ->
+                    item(key = "row_${cat.id}_$rowIndex") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            ProductTile(
+                                modifier = Modifier.weight(1f),
+                                product = rowItems[0],
+                                appVm = appVm,
+                                onOpenDetails = {
+                                    if (!appVm.clubConfirmed) needConfirmClub = true
+                                    sheetProduct = rowItems[0]
+                                },
+                                onPlusFirst = { p ->
+                                    if (!appVm.clubConfirmed) needConfirmClub = true
+                                    appVm.addProduct(p, null)
+                                },
+                                onMinus = { p -> appVm.changeQty(p.id, null, -1) },
+                                onPlus = { p -> appVm.changeQty(p.id, null, +1) }
                             )
-                        } else {
-                            Spacer(Modifier.height(6.dp))
-                        }
-                    }
-                } else {
-                    val rows = list.chunked(2)
-                    rows.forEachIndexed { rowIndex, rowItems ->
-                        item(key = "row_${cat.id}_$rowIndex") {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
+
+                            if (rowItems.size > 1) {
                                 ProductTile(
                                     modifier = Modifier.weight(1f),
-                                    product = rowItems[0],
+                                    product = rowItems[1],
                                     appVm = appVm,
                                     onOpenDetails = {
                                         if (!appVm.clubConfirmed) needConfirmClub = true
-                                        sheetProduct = rowItems[0]
+                                        sheetProduct = rowItems[1]
                                     },
                                     onPlusFirst = { p ->
                                         if (!appVm.clubConfirmed) needConfirmClub = true
@@ -303,26 +308,8 @@ fun ShopScreen(
                                     onMinus = { p -> appVm.changeQty(p.id, null, -1) },
                                     onPlus = { p -> appVm.changeQty(p.id, null, +1) }
                                 )
-
-                                if (rowItems.size > 1) {
-                                    ProductTile(
-                                        modifier = Modifier.weight(1f),
-                                        product = rowItems[1],
-                                        appVm = appVm,
-                                        onOpenDetails = {
-                                            if (!appVm.clubConfirmed) needConfirmClub = true
-                                            sheetProduct = rowItems[1]
-                                        },
-                                        onPlusFirst = { p ->
-                                            if (!appVm.clubConfirmed) needConfirmClub = true
-                                            appVm.addProduct(p, null)
-                                        },
-                                        onMinus = { p -> appVm.changeQty(p.id, null, -1) },
-                                        onPlus = { p -> appVm.changeQty(p.id, null, +1) }
-                                    )
-                                } else {
-                                    Spacer(Modifier.weight(1f))
-                                }
+                            } else {
+                                Spacer(Modifier.weight(1f))
                             }
                         }
                     }
