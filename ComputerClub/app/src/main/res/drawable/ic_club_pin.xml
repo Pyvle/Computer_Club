@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="40dp"
+    android:viewportWidth="32"
+    android:viewportHeight="40">
+    <!-- тело пина -->
+    <path
+        android:pathData="M16,0 C8.268,0 2,6.268 2,14 C2,24.5 16,40 16,40 C16,40 30,24.5 30,14 C30,6.268 23.732,0 16,0 Z"
+        android:fillColor="#6750A4" />
+    <!-- белый круг внутри -->
+    <path
+        android:pathData="M16,9 C13.239,9 11,11.239 11,14 C11,16.761 13.239,19 16,19 C18.761,19 21,16.761 21,14 C21,11.239 18.761,9 16,9 Z"
+        android:fillColor="#FFFFFF" />
+</vector>

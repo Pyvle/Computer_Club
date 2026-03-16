@@ -109,6 +109,8 @@ data class Club(
     val location: String,
     val address: String,
     val description: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
 
     // из /clubs/available
     val isBlocked: Boolean = false,

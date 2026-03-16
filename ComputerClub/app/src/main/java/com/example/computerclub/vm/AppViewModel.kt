@@ -93,6 +93,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var notificationsEnabled: Boolean by mutableStateOf(notifPrefsStore.peek())
         private set
 
+
     fun updateNotifications(enabled: Boolean) {
         notificationsEnabled = enabled
         viewModelScope.launch { notifPrefsStore.setEnabled(enabled) }
@@ -1746,6 +1747,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 location = dto.locationText ?: "",
                                 address = dto.address,
                                 description = dto.description ?: "",
+                                latitude = dto.latitude,
+                                longitude = dto.longitude,
                                 isBlocked = dto.isBlocked,
                                 blockReason = dto.blockReason
                             )
@@ -1758,7 +1761,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 name = dto.name,
                                 location = dto.locationText ?: "",
                                 address = dto.address,
-                                description = dto.description ?: ""
+                                description = dto.description ?: "",
+                                latitude = dto.latitude,
+                                longitude = dto.longitude
                             )
                         }
                     }
@@ -1769,7 +1774,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             name = dto.name,
                             location = dto.locationText ?: "",
                             address = dto.address,
-                            description = dto.description ?: ""
+                            description = dto.description ?: "",
+                            latitude = dto.latitude,
+                            longitude = dto.longitude
                         )
                     }
                 }

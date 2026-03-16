@@ -14,10 +14,33 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.PointF
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.widget.FrameLayout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.computerclub.model.Club
 import com.example.computerclub.vm.AppViewModel
-import kotlin.math.abs
+import com.yandex.mapkit.MapKitFactory
+import com.yandex.mapkit.geometry.BoundingBox
+import com.yandex.mapkit.geometry.Geometry
+import com.yandex.mapkit.geometry.Point
+import com.yandex.mapkit.map.CameraPosition
+import com.yandex.mapkit.map.IconStyle
+import com.yandex.mapkit.map.MapObjectTapListener
+import com.yandex.mapkit.mapview.MapView
+import com.yandex.runtime.image.ImageProvider
 
 private enum class ClubsTab { Favorites, All }
 
@@ -112,7 +135,7 @@ fun ClubsListScreen(
 
         // ВЫБОР: список или карта
         if (mapMode) {
-            ClubsMapStub(
+            ClubsMap(
                 clubs = currentList,
                 onClubClick = { onOpenClub(it.id) }
             )
@@ -132,41 +155,93 @@ fun ClubsListScreen(
     }
 }
 
-// карта-заглушка с chip'ами клубов — заменить на Google Maps / Яндекс
 @Composable
-private fun ClubsMapStub(
+private fun ClubsMap(
     clubs: List<Club>,
     onClubClick: (Club) -> Unit
 ) {
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(420.dp)
-    ) box@{
-        Card(modifier = Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Карта (заглушка)", style = MaterialTheme.typography.titleMedium)
-                    Text("Тапни по метке клуба → откроются детали.", style = MaterialTheme.typography.bodyMedium)
-                }
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val onClubClickState = rememberUpdatedState(onClubClick)
+    val clubsWithCoords = clubs.filter { it.latitude != null && it.longitude != null }
 
-                clubs.forEach { club ->
-                    val (xFrac, yFrac) = remember(club.id) { pseudoCoords(club.id) }
+    if (clubsWithCoords.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxWidth().height(420.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Координаты клубов не указаны")
+        }
+        return
+    }
 
-                    val x = this@box.maxWidth * xFrac
-                    val y = this@box.maxHeight * yFrac
+    // сильные ссылки на слушатели — иначе GC соберёт JNI-объекты
+    val tapListeners = remember { mutableListOf<MapObjectTapListener>() }
+    val mapView = remember { MapView(context) }
+    // якорь: нижний центр треугольника совпадает с координатой
+    val iconStyle = remember { IconStyle().apply { anchor = PointF(0.5f, 1.0f) } }
 
-                    AssistChip(
-                        onClick = { onClubClick(club) },
-                        label = { Text(club.name) },
-                        modifier = Modifier
-                            .offset(x = x, y = y)
-                            .padding(4.dp)
-                    )
-                }
+    DisposableEffect(lifecycleOwner) {
+        val observer = object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) {
+                MapKitFactory.getInstance().onStart()
+                mapView.onStart()
+            }
+
+            override fun onStop(owner: LifecycleOwner) {
+                mapView.onStop()
+                MapKitFactory.getInstance().onStop()
             }
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+
+    AndroidView(
+        factory = { ctx ->
+            FrameLayout(ctx).apply { addView(mapView) }
+        },
+        update = {
+            val map = mapView.mapWindow.map
+            map.mapObjects.clear()
+            tapListeners.clear()
+
+            val minLat = clubsWithCoords.minOf { it.latitude!! }
+            val maxLat = clubsWithCoords.maxOf { it.latitude!! }
+            val minLon = clubsWithCoords.minOf { it.longitude!! }
+            val maxLon = clubsWithCoords.maxOf { it.longitude!! }
+            val cameraPosition = if (clubsWithCoords.size == 1) {
+                CameraPosition(Point(minLat, minLon), 14f, 0f, 0f)
+            } else {
+                // отступ, чтобы метки не упирались в края
+                val pad = 0.05
+                map.cameraPosition(
+                    Geometry.fromBoundingBox(
+                        BoundingBox(
+                            Point(minLat - pad, minLon - pad),
+                            Point(maxLat + pad, maxLon + pad)
+                        )
+                    )
+                )
+            }
+            map.move(cameraPosition)
+
+            clubsWithCoords.forEach { club ->
+                val label = ImageProvider.fromBitmap(createClubLabelBitmap(context, club.name))
+                val placemark = map.mapObjects.addPlacemark().apply {
+                    geometry = Point(club.latitude!!, club.longitude!!)
+                    setIcon(label, iconStyle)
+                }
+                val listener = MapObjectTapListener { _, _ ->
+                    onClubClickState.value(club)
+                    true
+                }
+                tapListeners.add(listener)
+                placemark.addTapListener(listener)
+            }
+        },
+        modifier = Modifier.fillMaxWidth().height(420.dp)
+    )
 }
 
 @Composable
@@ -211,9 +286,43 @@ private fun ClubCard(
     }
 }
 
-private fun pseudoCoords(id: String): Pair<Float, Float> {
-    val h = id.hashCode()
-    val x = (abs(h % 100) / 100f) * 0.7f + 0.05f
-    val y = (abs((h shr 16) % 100) / 100f) * 0.6f + 0.15f
-    return x to y
+private fun createClubLabelBitmap(context: Context, text: String): Bitmap {
+    val dp = context.resources.displayMetrics.density
+    val padH = 14f * dp
+    val padV = 8f * dp
+    val tipH = 10f * dp   // высота треугольника-указателя
+    val corner = 8f * dp
+
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 13f * dp
+        typeface = Typeface.DEFAULT_BOLD
+    }
+
+    val fm = textPaint.fontMetrics
+    val textW = textPaint.measureText(text)
+    val textH = fm.descent - fm.ascent
+
+    val bmpW = (textW + padH * 2).toInt()
+    val rectH = (textH + padV * 2).toInt()
+    val bmpH = (rectH + tipH).toInt()
+
+    val bitmap = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+
+    val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#E53935") }
+
+    canvas.drawRoundRect(RectF(0f, 0f, bmpW.toFloat(), rectH.toFloat()), corner, corner, bgPaint)
+
+    // треугольник по центру снизу
+    canvas.drawPath(Path().apply {
+        moveTo(bmpW / 2f - tipH, rectH.toFloat())
+        lineTo(bmpW / 2f + tipH, rectH.toFloat())
+        lineTo(bmpW / 2f, bmpH.toFloat())
+        close()
+    }, bgPaint)
+
+    canvas.drawText(text, padH, padV - fm.ascent, textPaint)
+
+    return bitmap
 }

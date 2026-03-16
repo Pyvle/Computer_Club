@@ -1,8 +1,16 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { stream -> localProperties.load(stream) }
 }
 
 android {
@@ -11,12 +19,14 @@ android {
 
     defaultConfig {
         applicationId "com.example.computerclub"
-        minSdk 24
+        minSdk 26
         targetSdk 35
         versionCode 1
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField "String", "MAPKIT_API_KEY", "\"${localProperties.getProperty("MAPKIT_API_KEY", "")}\""
     }
 
     buildTypes {
@@ -34,6 +44,7 @@ android {
     }
     buildFeatures {
         compose true
+        buildConfig true
     }
 }
 
@@ -70,4 +81,6 @@ dependencies {
     implementation libs.datastore.preferences
     implementation libs.work.runtime.ktx
 
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+    implementation("com.yandex.android:maps.mobile:4.33.0-lite")
 }
