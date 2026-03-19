@@ -12,7 +12,8 @@ import java.time.LocalDateTime
 @Service
 class ClubSettingsService(
     private val clubRepository: ClubRepository,
-    private val auditService: AuditService
+    private val auditService: AuditService,
+    private val fileStorageService: FileStorageService
 ) {
 
     fun get(clubId: Long): ClubSettingsResponse {
@@ -27,10 +28,18 @@ class ClubSettingsService(
             .orElseThrow { ResponseStatusException(HttpStatus.NOT_FOUND, "Club not found") }
         val before = club.toResponse()
         club.name = req.name
-        club.address = req.address
+        club.addressFull = req.addressFull
+        club.addressShort = req.addressShort
         club.locationText = req.locationText?.takeIf { it.isNotBlank() }
         club.description = req.description?.takeIf { it.isNotBlank() }
+        val newImageUrl = req.imageUrl?.takeIf { it.isNotBlank() }
+        if (newImageUrl != club.imageUrl) {
+            fileStorageService.deleteIfLocal(club.imageUrl)
+            club.imageUrl = newImageUrl
+        }
         club.isActive = req.isActive
+        club.latitude = req.latitude
+        club.longitude = req.longitude
         club.updatedAt = LocalDateTime.now()
         val after = club.toResponse()
         auditService.log(
@@ -48,10 +57,13 @@ class ClubSettingsService(
     private fun com.club.backend.domain.entity.ClubEntity.toResponse() = ClubSettingsResponse(
         id = id!!,
         name = name,
-        address = address,
+        addressFull = addressFull,
+        addressShort = addressShort,
         locationText = locationText,
         description = description,
         imageUrl = imageUrl,
-        isActive = isActive
+        isActive = isActive,
+        latitude = latitude,
+        longitude = longitude
     )
 }

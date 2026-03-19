@@ -28,6 +28,8 @@ class SecurityConfig(
                     "/swagger-ui.html",
                     "/api/v1/auth/**",
                     "/api/v1/admin/auth/login",
+                    // статические файлы (фото клубов и товаров)
+                    "/uploads/**",
                     // публичный каталог — просмотр без авторизации
                     "/api/v1/clubs",
                     "/api/v1/product-categories",

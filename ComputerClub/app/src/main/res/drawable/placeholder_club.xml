@@ -1,0 +1,35 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="360dp"
+    android:height="180dp"
+    android:viewportWidth="360"
+    android:viewportHeight="180">
+
+    <!-- фон -->
+    <path
+        android:fillColor="#E8EAF6"
+        android:pathData="M0,0 L360,0 L360,180 L0,180 Z" />
+
+    <!-- монитор — корпус -->
+    <path
+        android:fillColor="#9FA8DA"
+        android:pathData="M130,50 L230,50 Q235,50 235,55 L235,120 Q235,125 230,125 L130,125 Q125,125 125,120 L125,55 Q125,50 130,50 Z" />
+
+    <!-- экран монитора -->
+    <path
+        android:fillColor="#3949AB"
+        android:pathData="M133,58 L227,58 L227,112 L133,112 Z" />
+
+    <!-- подставка -->
+    <path
+        android:fillColor="#9FA8DA"
+        android:pathData="M170,125 L190,125 L195,138 L165,138 Z" />
+    <path
+        android:fillColor="#9FA8DA"
+        android:pathData="M158,138 L202,138 L202,142 L158,142 Z" />
+
+    <!-- клавиатура -->
+    <path
+        android:fillColor="#C5CAE9"
+        android:pathData="M148,148 L212,148 Q214,148 214,150 L214,155 Q214,157 212,157 L148,157 Q146,157 146,155 L146,150 Q146,148 148,148 Z" />
+
+</vector>

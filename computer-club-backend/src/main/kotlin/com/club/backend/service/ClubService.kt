@@ -20,7 +20,7 @@ class ClubService(
             ClubResponse(
                 id = it.id!!,
                 name = it.name,
-                address = it.address,
+                address = it.addressShort,
                 locationText = it.locationText,
                 description = it.description,
                 imageUrl = it.imageUrl,
@@ -45,7 +45,7 @@ class ClubService(
             AvailableClubResponse(
                 id = club.id!!,
                 name = club.name,
-                address = club.address,
+                address = club.addressShort,
                 locationText = club.locationText,
                 description = club.description,
                 imageUrl = club.imageUrl,

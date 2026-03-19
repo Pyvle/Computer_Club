@@ -320,18 +320,33 @@ export interface DashboardPurchasePreview {
 export interface ClubSettingsResponse {
   id: number
   name: string
-  address: string
+  addressFull: string
+  addressShort: string
   locationText: string | null
   description: string | null
+  imageUrl: string | null
   isActive: boolean
+  latitude: number | null
+  longitude: number | null
 }
 
 export interface UpdateClubSettingsRequest {
   name: string
-  address: string
+  addressFull: string
+  addressShort: string
   locationText: string | null
   description: string | null
+  imageUrl: string | null
   isActive: boolean
+  latitude: number | null
+  longitude: number | null
+}
+
+export interface AddressSearchResult {
+  addressFull: string
+  addressShort: string
+  latitude: number
+  longitude: number
 }
 
 export interface ClubUserBlockView {

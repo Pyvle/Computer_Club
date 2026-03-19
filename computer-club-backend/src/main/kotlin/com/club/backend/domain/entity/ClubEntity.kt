@@ -19,8 +19,11 @@ class ClubEntity(
     @Column(nullable = false, length = 120)
     var name: String,
 
-    @Column(nullable = false, length = 255)
-    var address: String,
+    @Column(name = "address_full", nullable = false, length = 500)
+    var addressFull: String,
+
+    @Column(name = "address_short", nullable = false, length = 255)
+    var addressShort: String,
 
     @Column(name = "location_text", length = 255)
     var locationText: String? = null,

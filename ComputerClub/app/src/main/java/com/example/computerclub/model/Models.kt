@@ -109,6 +109,7 @@ data class Club(
     val location: String,
     val address: String,
     val description: String,
+    val imageUrl: String? = null,
     val latitude: Double? = null,
     val longitude: Double? = null,
 

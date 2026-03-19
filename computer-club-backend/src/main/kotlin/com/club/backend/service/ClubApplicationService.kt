@@ -154,7 +154,9 @@ class ClubApplicationService(
 
         val club = ClubEntity(
             name = app.clubName,
-            address = app.address,
+            // при создании из заявки оба поля совпадают — владелец уточнит в настройках
+            addressFull = app.address,
+            addressShort = app.address,
             locationText = app.locationText,
             description = app.description,
             isActive = true,

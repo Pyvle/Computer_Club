@@ -13,6 +13,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import coil3.compose.AsyncImage
+import com.example.computerclub.R
 import androidx.compose.ui.Modifier
 import android.content.Context
 import android.graphics.Bitmap
@@ -257,20 +262,35 @@ private fun ClubCard(
             .clickable(onClick = onOpen)
     ) {
         Box(Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                if (club.isBlocked) {
-                    Text(
-                        text = "Заблокирован${club.blockReason?.let { ": $it" } ?: ""}",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+            Column {
+                AsyncImage(
+                    model = club.imageUrl,
+                    contentDescription = club.name,
+                    placeholder = painterResource(R.drawable.placeholder_club),
+                    error = painterResource(R.drawable.placeholder_club),
+                    fallback = painterResource(R.drawable.placeholder_club),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                )
+
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (club.isBlocked) {
+                        Text(
+                            text = "Заблокирован${club.blockReason?.let { ": $it" } ?: ""}",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Text(club.name, style = MaterialTheme.typography.titleMedium)
+                    Text(club.location, style = MaterialTheme.typography.labelMedium)
+                    Text(club.address, style = MaterialTheme.typography.bodyMedium)
                 }
-                Text(club.name, style = MaterialTheme.typography.titleMedium)
-                Text(club.location, style = MaterialTheme.typography.labelMedium)
-                Text(club.address, style = MaterialTheme.typography.bodyMedium)
             }
 
             IconButton(
@@ -279,7 +299,8 @@ private fun ClubCard(
             ) {
                 Icon(
                     imageVector = if (isFavorite) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                    contentDescription = "Избранное"
+                    contentDescription = "Избранное",
+                    tint = MaterialTheme.colorScheme.onPrimary
                 )
             }
         }

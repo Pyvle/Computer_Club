@@ -53,11 +53,6 @@ private const val MIN_GAP_MIN = 60L
 // Возможное продление текущей брони (мок): до 2 часов
 private const val MAX_EXTENSION_MIN = 120
 
-// Тарифы (мок)
-private const val RATE_STANDARD_RUB_PER_HOUR = 100
-private const val RATE_PKG_3H_RUB_PER_HOUR = 90
-private const val RATE_PKG_5H_RUB_PER_HOUR = 80
-
 
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -66,9 +61,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val isDebuggable: Boolean =
         (getApplication<Application>().applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
+    private val baseUrl = "http://10.0.2.2:8080" // для Android Emulator; поменяй на свой хост
+
     private val network = NetworkClient(
         context = getApplication(),
-        baseUrl = "http://10.0.2.2:8080", // для Android Emulator; поменяй на свой хост
+        baseUrl = baseUrl,
         debug = isDebuggable
     )
 
@@ -1682,7 +1679,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (pkg != null) return pkg.pricePerHourRub
         }
         // стандартный тариф: минимальная цена места → первый пакет → константа
-        return standardRateRubPerHour ?: timePackages.firstOrNull()?.pricePerHourRub ?: RATE_STANDARD_RUB_PER_HOUR
+        return standardRateRubPerHour ?: timePackages.firstOrNull()?.pricePerHourRub ?: 0
     }
 
     /**
@@ -1692,7 +1689,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * Пример: пакет 80 ₽/ч, стандарт 100 ₽/ч, VIP 110 ₽/ч → VIP = 80 + (110-100) = 90 ₽/ч
      */
     fun effectiveRateForSeatType(seatType: com.example.computerclub.model.SeatType): Int {
-        val standard = standardRateRubPerHour ?: RATE_STANDARD_RUB_PER_HOUR
+        val standard = standardRateRubPerHour ?: 0
         val baseRate = bookingRateRubPerHour(bookingDraft.packageHours)
         val seatTypePrice = seatPrices.firstOrNull { it.seatType == seatType.name }?.pricePerHourRub ?: standard
         val surcharge = maxOf(0, seatTypePrice - standard)
@@ -1747,6 +1744,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 location = dto.locationText ?: "",
                                 address = dto.address,
                                 description = dto.description ?: "",
+                                imageUrl = dto.imageUrl?.let { if (it.startsWith("/")) "$baseUrl$it" else it },
                                 latitude = dto.latitude,
                                 longitude = dto.longitude,
                                 isBlocked = dto.isBlocked,
@@ -1762,6 +1760,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 location = dto.locationText ?: "",
                                 address = dto.address,
                                 description = dto.description ?: "",
+                                imageUrl = dto.imageUrl?.let { if (it.startsWith("/")) "$baseUrl$it" else it },
                                 latitude = dto.latitude,
                                 longitude = dto.longitude
                             )
@@ -1775,6 +1774,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             location = dto.locationText ?: "",
                             address = dto.address,
                             description = dto.description ?: "",
+                            imageUrl = dto.imageUrl?.let { if (it.startsWith("/")) "$baseUrl$it" else it },
                             latitude = dto.latitude,
                             longitude = dto.longitude
                         )
