@@ -146,3 +146,11 @@ interface SeatPriceApi {
     @GET("/api/v1/clubs/{clubId}/seat-prices")
     suspend fun getPrices(@Path("clubId") clubId: Long): List<SeatPriceResponseDto>
 }
+
+interface ReportApi {
+    @POST("/api/v1/clubs/{clubId}/reports")
+    suspend fun submitReport(
+        @Path("clubId") clubId: Long,
+        @Body dto: CreateReportRequestDto
+    )
+}

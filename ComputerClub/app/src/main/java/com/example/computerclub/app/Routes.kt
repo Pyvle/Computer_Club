@@ -21,4 +21,5 @@ object Routes {
     const val Notifications = "notifications"
     const val ProfileDetails = "profile_details"
     const val About = "about"
+    const val ReportProblem = "report_problem/{clubId}"
 }

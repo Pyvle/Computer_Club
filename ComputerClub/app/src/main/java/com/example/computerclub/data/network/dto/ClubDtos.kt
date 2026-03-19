@@ -25,6 +25,9 @@ data class ClubResponseDto(
 )
 
 @Serializable
+data class CreateReportRequestDto(val message: String)
+
+@Serializable
 data class AvailableClubResponseDto(
     val id: Long,
     val name: String,

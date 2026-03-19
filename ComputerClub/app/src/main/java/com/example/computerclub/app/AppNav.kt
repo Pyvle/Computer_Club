@@ -74,7 +74,8 @@ fun AppNav(appVm: AppViewModel) {
                     onBack = { nav.popBackStack() },
                     onChosen = {
                         nav.navigate(Routes.Booking) { launchSingleTop = true }
-                    }
+                    },
+                    onReport = { nav.navigate("report_problem/$clubId") }
                 )
             }
 
@@ -167,6 +168,18 @@ fun AppNav(appVm: AppViewModel) {
             composable(Routes.Notifications) { NotificationsScreen(appVm = appVm, nav = nav) }
             composable(Routes.ProfileDetails) { ProfileDetailsScreen(appVm = appVm, nav = nav) }
             composable(Routes.About) { AboutScreen() }
+
+            composable(
+                route = Routes.ReportProblem,
+                arguments = listOf(navArgument("clubId") { type = NavType.StringType })
+            ) { entry ->
+                val clubId = entry.arguments?.getString("clubId") ?: ""
+                ReportProblemScreen(
+                    clubId = clubId,
+                    appVm = appVm,
+                    onBack = { nav.popBackStack() }
+                )
+            }
         }
     }
 }

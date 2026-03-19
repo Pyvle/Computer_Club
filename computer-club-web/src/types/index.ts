@@ -473,6 +473,20 @@ export interface FloorplanBookingEntry {
   paymentStatus: string | null
 }
 
+export interface ClubUserReportResponse {
+  id: number
+  userId: number
+  userPhone: string | null
+  message: string
+  createdAt: string
+}
+
+export interface PlatformMessageResponse {
+  id: number
+  message: string
+  createdAt: string
+}
+
 export interface ClubDashboardResponse {
   activeBookingsCount: number
   upcomingTodayCount: number

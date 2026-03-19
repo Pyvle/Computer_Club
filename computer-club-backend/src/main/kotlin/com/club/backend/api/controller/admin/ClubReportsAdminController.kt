@@ -1,5 +1,7 @@
 package com.club.backend.api.controller.admin
 
+import com.club.backend.api.dto.ClubUserReportResponse
+import com.club.backend.api.dto.PlatformMessageResponse
 import com.club.backend.api.dto.admin.AdminBookingDetailResponse
 import com.club.backend.api.dto.admin.AdminBookingResponse
 import com.club.backend.api.dto.admin.AdminPurchaseDetailResponse
@@ -10,6 +12,7 @@ import com.club.backend.domain.enum.BookingStatus
 import com.club.backend.domain.enum.PaymentStatus
 import com.club.backend.security.RbacService
 import com.club.backend.service.ClubReportsService
+import com.club.backend.service.ClubUserReportService
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.*
@@ -19,7 +22,8 @@ import java.time.LocalDateTime
 @RequestMapping("/api/v1/admin/clubs/{clubId}")
 class ClubReportsAdminController(
     private val clubReportsService: ClubReportsService,
-    private val rbacService: RbacService
+    private val rbacService: RbacService,
+    private val clubUserReportService: ClubUserReportService
 ) {
 
     @GetMapping("/dashboard")
@@ -85,4 +89,14 @@ class ClubReportsAdminController(
         @PathVariable clubId: Long,
         @PathVariable purchaseId: Long
     ): AdminPurchaseResponse = clubReportsService.adminCancel(clubId, purchaseId)
+
+    @GetMapping("/user-reports")
+    @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_REPORTS_VIEW)")
+    fun userReports(@PathVariable clubId: Long): List<ClubUserReportResponse> =
+        clubUserReportService.getUserReports(clubId)
+
+    @GetMapping("/platform-messages")
+    @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_REPORTS_VIEW)")
+    fun platformMessages(@PathVariable clubId: Long): List<PlatformMessageResponse> =
+        clubUserReportService.getPlatformMessages(clubId)
 }

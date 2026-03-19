@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.ReportProblem
 import androidx.compose.material3.Card
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,7 +29,8 @@ fun ClubDetailsScreen(
     clubId: String,
     appVm: AppViewModel,
     onChosen: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onReport: () -> Unit = {}
 ) {
     val club = appVm.clubs.firstOrNull { it.id == clubId }
 
@@ -49,6 +51,9 @@ fun ClubDetailsScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onReport) {
+                        Icon(Icons.Outlined.ReportProblem, contentDescription = "Сообщить о проблеме")
+                    }
                     IconButton(onClick = { appVm.toggleFavoriteClub(club.id) }) {
                         Icon(
                             imageVector = if (isFav) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,

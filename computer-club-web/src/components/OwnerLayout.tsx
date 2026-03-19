@@ -13,6 +13,7 @@ import {
   LogoutOutlined,
   SettingOutlined,
   ClockCircleOutlined,
+  MessageOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -30,6 +31,7 @@ const CLUB_NAV = [
   { key: 'bookings', icon: <CalendarOutlined />, label: 'Бронирования' },
   { key: 'purchases', icon: <ShoppingCartOutlined />, label: 'Покупки' },
   { key: 'user-blocks', icon: <StopOutlined />, label: 'Блокировки' },
+  { key: 'messages', icon: <MessageOutlined />, label: 'Сообщения' },
   { key: 'audit', icon: <AuditOutlined />, label: 'Аудит' },
   { key: 'settings', icon: <SettingOutlined />, label: 'Настройки' },
 ]

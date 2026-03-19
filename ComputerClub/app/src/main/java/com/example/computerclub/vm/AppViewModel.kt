@@ -32,6 +32,7 @@ import com.example.computerclub.data.repository.CheckoutRepository
 import com.example.computerclub.data.repository.SeatRepository
 import com.example.computerclub.data.repository.FloorplanRepository
 import com.example.computerclub.data.repository.FavoritesRepository
+import com.example.computerclub.data.repository.ReportRepository
 import com.example.computerclub.data.network.dto.CartResponseDto
 import com.example.computerclub.data.network.dto.PurchaseDetailsDto
 import retrofit2.HttpException
@@ -85,6 +86,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val notifPrefsStore = NotifPrefsStore(getApplication())
     private val timePackageApi = network.timePackageApi
     private val seatPriceApi = network.seatPriceApi
+    private val reportRepo = ReportRepository(network.reportApi)
 
     // --- Уведомления ---
     var notificationsEnabled: Boolean by mutableStateOf(notifPrefsStore.peek())
@@ -1613,6 +1615,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } catch (_: Exception) {
                 // откат при ошибке
                 if (isNowFavorite) favoriteClubIds.add(clubId) else favoriteClubIds.remove(clubId)
+            }
+        }
+    }
+
+    fun submitReport(
+        clubId: String,
+        message: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val clubIdLong = clubId.toLongOrNull() ?: return onError("Неверный ID клуба")
+        viewModelScope.launch {
+            try {
+                reportRepo.submitReport(clubIdLong, message)
+                onSuccess()
+            } catch (e: Exception) {
+                onError(e.message ?: "Не удалось отправить сообщение")
             }
         }
     }
