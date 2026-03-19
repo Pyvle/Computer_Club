@@ -26,6 +26,7 @@ import ClubApplicationsPage from './pages/club-applications/ClubApplicationsPage
 import GlobalCatalogPage from './pages/global-catalog/GlobalCatalogPage'
 import UsersPage from './pages/users/UsersPage'
 import ClubTimePackagesPage from './pages/club-time-packages/ClubTimePackagesPage'
+import GlobalClubsPage from './pages/global-clubs/GlobalClubsPage'
 
 const Placeholder = ({ name }: { name: string }) => (
   <div style={{ padding: 24, color: '#999' }}>{name} — в разработке</div>
@@ -51,6 +52,7 @@ export default function App() {
                 {/* Платформенная панель (GLOBAL_ADMIN) */}
                 <Route element={<PlatformLayout />}>
                   <Route path="/admin/platform/applications" element={<ClubApplicationsPage />} />
+                  <Route path="/admin/platform/clubs" element={<GlobalClubsPage />} />
                   <Route path="/admin/platform/catalog" element={<GlobalCatalogPage />} />
                   <Route path="/admin/platform/users" element={<UsersPage />} />
                 </Route>

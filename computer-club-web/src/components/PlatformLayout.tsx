@@ -4,6 +4,7 @@ import {
   AppstoreOutlined,
   UserOutlined,
   LogoutOutlined,
+  ShopOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -12,6 +13,7 @@ const { Sider, Header, Content } = Layout
 
 const PLATFORM_NAV = [
   { key: '/admin/platform/applications', icon: <FileDoneOutlined />, label: 'Заявки на клубы' },
+  { key: '/admin/platform/clubs', icon: <ShopOutlined />, label: 'Клубы' },
   { key: '/admin/platform/catalog', icon: <AppstoreOutlined />, label: 'Глобальный каталог' },
   { key: '/admin/platform/users', icon: <UserOutlined />, label: 'Пользователи' },
 ]

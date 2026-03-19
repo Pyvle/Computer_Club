@@ -74,6 +74,30 @@ export interface UpdateProductRequest {
   isActive: boolean
 }
 
+export interface GlobalClubResponse {
+  id: number
+  name: string
+  addressShort: string
+  addressFull: string
+  description: string | null
+  imageUrl: string | null
+  isActive: boolean
+  isBlocked: boolean
+  blockReason: string | null
+  createdAt: string
+}
+
+export interface BlockClubRequest {
+  reason: string | null
+}
+
+export interface ClubWarningResponse {
+  id: number
+  message: string
+  createdBy: number
+  createdAt: string
+}
+
 export interface AdminUserResponse {
   id: number
   phone: string | null

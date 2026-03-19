@@ -16,7 +16,7 @@ class ClubService(
 
     @Transactional(readOnly = true)
     fun getAllActive(): List<ClubResponse> {
-        return clubRepository.findAllByIsActiveTrueOrderByIdAsc().map {
+        return clubRepository.findAllByIsActiveTrueAndIsBlockedFalseOrderByIdAsc().map {
             ClubResponse(
                 id = it.id!!,
                 name = it.name,
@@ -40,7 +40,7 @@ class ClubService(
         val activeBlocks = clubUserBlockRepository.findActiveBlocksForUser(userId, now)
             .associateBy { it.club.id!! }
 
-        return clubRepository.findAllByIsActiveTrueOrderByIdAsc().map { club ->
+        return clubRepository.findAllByIsActiveTrueAndIsBlockedFalseOrderByIdAsc().map { club ->
             val b = activeBlocks[club.id!!]
             AvailableClubResponse(
                 id = club.id!!,

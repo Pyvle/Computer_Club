@@ -43,6 +43,13 @@ class ClubEntity(
     @Column(nullable = false)
     var isActive: Boolean = true,
 
+    // блокировка платформой (GLOBAL_ADMIN), отдельно от isActive владельца
+    @Column(name = "is_blocked", nullable = false)
+    var isBlocked: Boolean = false,
+
+    @Column(name = "block_reason", columnDefinition = "text")
+    var blockReason: String? = null,
+
     @Column(name = "created_at", nullable = false)
     var createdAt: LocalDateTime = LocalDateTime.now(),
 
