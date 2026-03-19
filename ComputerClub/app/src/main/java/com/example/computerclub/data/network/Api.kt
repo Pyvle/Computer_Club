@@ -104,6 +104,9 @@ interface SeatApi {
     @GET("/api/v1/clubs/{clubId}/seats")
     suspend fun getSeats(@Path("clubId") clubId: Long): List<SeatResponseDto>
 
+    @GET("/api/v1/clubs/{clubId}/seat-specs")
+    suspend fun getSeatSpecs(@Path("clubId") clubId: Long): List<SeatSpecResponseDto>
+
     @POST("/api/v1/clubs/{clubId}/seats/availability")
     suspend fun getAvailability(
         @Path("clubId") clubId: Long,

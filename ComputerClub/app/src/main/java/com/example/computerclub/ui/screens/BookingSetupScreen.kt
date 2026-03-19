@@ -210,10 +210,10 @@ fun BookingSetupScreen(
                         Text(club?.name ?: "Клуб", style = MaterialTheme.typography.titleMedium)
                         Text(club?.address ?: "", style = MaterialTheme.typography.bodyMedium)
                     }
+                    val isFav by remember { derivedStateOf { club != null && appVm.isFavoriteClub(club.id) } }
                     IconButton(onClick = { club?.let { appVm.toggleFavoriteClub(it.id) } }) {
                         Icon(
-                            imageVector = if (club != null && appVm.isFavoriteClub(club.id))
-                                Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                            imageVector = if (isFav) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                             contentDescription = "Избранное"
                         )
                     }
@@ -338,19 +338,20 @@ private fun TimePackagesRow(
             Text("Пакеты времени", style = MaterialTheme.typography.titleSmall)
 
             // сетка 2 колонки с вертикальной прокруткой — карточки не уменьшаются
+            val rows = remember(packages, standardRateRubPerHour) {
+                buildList<Any?> {
+                    if (standardRateRubPerHour != null) add(null) // null = стандартный
+                    addAll(packages)
+                }.chunked(2)
+            }
+
             Column(
                 modifier = Modifier
                     .heightIn(max = 210.dp)
                     .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // стандартный пакет всегда первым, если задана цена
-                val allItems: List<Any?> = buildList {
-                    if (standardRateRubPerHour != null) add(null) // null = стандартный
-                    addAll(packages)
-                }
-
-                allItems.chunked(2).forEach { row ->
+                rows.forEach { row ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)

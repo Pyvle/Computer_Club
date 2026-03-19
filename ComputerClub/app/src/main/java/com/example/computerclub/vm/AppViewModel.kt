@@ -206,6 +206,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var seatPrices: List<com.example.computerclub.data.network.dto.SeatPriceResponseDto> by mutableStateOf(emptyList())
         private set
 
+    // --- Характеристики мест (загружаются вместе с местами) ---
+    var seatSpecs: List<com.example.computerclub.data.network.dto.SeatSpecResponseDto> by mutableStateOf(emptyList())
+        private set
+
     /** Минимальная цена за час по всем типам мест — стандартный тариф. */
     val standardRateRubPerHour: Int?
         get() = seatPrices.minOfOrNull { it.pricePerHourRub }
@@ -529,6 +533,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             booked = emptyList()
                         )
                     }
+                    seatSpecs = runCatching { seatRepo.seatSpecs(clubIdLong) }.getOrDefault(emptyList())
                 }
 
                 // загружаем floorplan + availability одним запросом

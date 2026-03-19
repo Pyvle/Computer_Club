@@ -3,6 +3,16 @@ package com.example.computerclub.data.network.dto
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class SpecLineDto(val name: String, val value: String)
+
+@Serializable
+data class SeatSpecResponseDto(
+    val seatType: String,
+    val title: String,
+    val specs: List<SpecLineDto>
+)
+
+@Serializable
 data class ClubResponseDto(
     val id: Long,
     val name: String,

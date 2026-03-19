@@ -14,11 +14,14 @@ import {
   Typography,
   Space,
   App,
+  Card,
+  Collapse,
+  Divider,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons'
 import apiClient from '../../utils/apiClient'
-import { AdminSeatResponse, CreateSeatRequest, UpdateSeatRequest } from '../../types'
+import { AdminSeatResponse, CreateSeatRequest, UpdateSeatRequest, SeatSpecResponse, SpecLine } from '../../types'
 
 interface SeatForm {
   label: string
@@ -40,6 +43,14 @@ export default function ClubSeatsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [form] = Form.useForm<SeatForm>()
 
+  // --- Характеристики мест ---
+  const [specs, setSpecs] = useState<SeatSpecResponse[]>([])
+  const [specsLoading, setSpecsLoading] = useState(false)
+  const [editingSpec, setEditingSpec] = useState<SeatSpecResponse | null>(null)
+  const [specModalOpen, setSpecModalOpen] = useState(false)
+  const [specSubmitting, setSpecSubmitting] = useState(false)
+  const [specForm] = Form.useForm<{ title: string; specs: SpecLine[] }>()
+
   async function fetchSeats() {
     setLoading(true)
     try {
@@ -54,8 +65,21 @@ export default function ClubSeatsPage() {
     }
   }
 
+  async function fetchSpecs() {
+    setSpecsLoading(true)
+    try {
+      const { data } = await apiClient.get<SeatSpecResponse[]>(`/admin/clubs/${clubId}/seat-specs`)
+      setSpecs(data)
+    } catch {
+      // если характеристик ещё нет — просто пустой список
+    } finally {
+      setSpecsLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchSeats()
+    fetchSpecs()
   }, [clubId])
 
   function openCreate() {
@@ -105,6 +129,39 @@ export default function ClubSeatsPage() {
       message.error(e?.response?.data?.message ?? 'Ошибка')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  function openSpecEdit(spec: SeatSpecResponse) {
+    setEditingSpec(spec)
+    specForm.setFieldsValue({ title: spec.title, specs: spec.specs })
+    setSpecModalOpen(true)
+  }
+
+  function openSpecCreate(seatType: 'REGULAR' | 'VIP') {
+    const defaultTitle = seatType === 'VIP' ? 'VIP' : 'СТАНДАРТ'
+    setEditingSpec({ seatType, title: defaultTitle, specs: [] })
+    specForm.setFieldsValue({ title: defaultTitle, specs: [] })
+    setSpecModalOpen(true)
+  }
+
+  async function onSpecSubmit(values: { title: string; specs: SpecLine[] }) {
+    if (!editingSpec) return
+    setSpecSubmitting(true)
+    try {
+      await apiClient.put(`/admin/clubs/${clubId}/seat-specs/${editingSpec.seatType}`, {
+        title: values.title,
+        specs: values.specs ?? [],
+      })
+      message.success('Характеристики сохранены')
+      setSpecModalOpen(false)
+      setEditingSpec(null)
+      specForm.resetFields()
+      await fetchSpecs()
+    } catch {
+      message.error('Не удалось сохранить характеристики')
+    } finally {
+      setSpecSubmitting(false)
     }
   }
 
@@ -235,6 +292,83 @@ export default function ClubSeatsPage() {
         pagination={{ pageSize: 20, showSizeChanger: false }}
         rowClassName={(row) => (!row.isActive ? 'ant-table-row-disabled' : '')}
       />
+
+      <Divider orientation="left" style={{ marginTop: 32 }}>Характеристики мест</Divider>
+
+      <Collapse
+        loading={specsLoading}
+        items={(['REGULAR', 'VIP'] as const).map((seatType) => {
+          const spec = specs.find((s) => s.seatType === seatType)
+          return {
+            key: seatType,
+            label: seatType === 'VIP' ? 'VIP' : 'СТАНДАРТ',
+            extra: (
+              <Button
+                size="small"
+                icon={spec ? <EditOutlined /> : <PlusOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  spec ? openSpecEdit(spec) : openSpecCreate(seatType)
+                }}
+              >
+                {spec ? 'Редактировать' : 'Добавить'}
+              </Button>
+            ),
+            children: spec && spec.specs.length > 0 ? (
+              <Table
+                size="small"
+                pagination={false}
+                dataSource={spec.specs.map((s, i) => ({ ...s, key: i }))}
+                columns={[
+                  { title: 'Параметр', dataIndex: 'name', key: 'name' },
+                  { title: 'Значение', dataIndex: 'value', key: 'value' },
+                ]}
+              />
+            ) : (
+              <Typography.Text type="secondary">Характеристики не заданы</Typography.Text>
+            ),
+          }
+        })}
+      />
+
+      <Modal
+        open={specModalOpen}
+        title={`Характеристики: ${editingSpec?.seatType === 'VIP' ? 'VIP' : 'СТАНДАРТ'}`}
+        footer={null}
+        onCancel={() => { setSpecModalOpen(false); setEditingSpec(null); specForm.resetFields() }}
+        width={560}
+      >
+        <Form layout="vertical" form={specForm} onFinish={onSpecSubmit}>
+          <Form.Item name="title" label="Заголовок" rules={[{ required: true }]}>
+            <Input placeholder="Например: СТАНДАРТ" />
+          </Form.Item>
+
+          <Form.List name="specs">
+            {(fields, { add, remove }) => (
+              <>
+                {fields.map(({ key, name }) => (
+                  <Space key={key} align="baseline" style={{ display: 'flex', marginBottom: 4 }}>
+                    <Form.Item name={[name, 'name']} rules={[{ required: true, message: 'Параметр' }]}>
+                      <Input placeholder="Параметр (напр. Процессор)" style={{ width: 200 }} />
+                    </Form.Item>
+                    <Form.Item name={[name, 'value']} rules={[{ required: true, message: 'Значение' }]}>
+                      <Input placeholder="Значение (напр. Intel i7)" style={{ width: 200 }} />
+                    </Form.Item>
+                    <MinusCircleOutlined onClick={() => remove(name)} style={{ color: 'red' }} />
+                  </Space>
+                ))}
+                <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} block>
+                  Добавить строку
+                </Button>
+              </>
+            )}
+          </Form.List>
+
+          <Button type="primary" htmlType="submit" block loading={specSubmitting} style={{ marginTop: 16 }}>
+            Сохранить
+          </Button>
+        </Form>
+      </Modal>
 
       <Modal
         open={modalOpen}

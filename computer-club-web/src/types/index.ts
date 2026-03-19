@@ -416,6 +416,22 @@ export interface AdminSeatPriceResponse {
   pricePerHourRub: number
 }
 
+export interface SpecLine {
+  name: string
+  value: string
+}
+
+export interface SeatSpecResponse {
+  seatType: string
+  title: string
+  specs: SpecLine[]
+}
+
+export interface UpdateSeatSpecRequest {
+  title: string
+  specs: SpecLine[]
+}
+
 export interface UpsertSeatPriceRequest {
   seatType: string
   pricePerHourRub: number

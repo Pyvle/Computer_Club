@@ -62,18 +62,22 @@ fun ClubsListScreen(
     val loading = appVm.clubsLoading
     val error = appVm.clubsError
 
-    val filteredAll = if (query.isBlank()) {
-        all
-    } else {
-        all.filter { c ->
-            c.name.contains(query, ignoreCase = true) ||
-                    c.location.contains(query, ignoreCase = true) ||
-                    c.address.contains(query, ignoreCase = true)
+    // один раз читаем favoriteClubIds как Set — O(1) lookup вместо O(n) contains per item
+    val favoriteIds by remember { derivedStateOf { appVm.favoriteClubIds.toHashSet() } }
+
+    val filteredAll by remember {
+        derivedStateOf {
+            if (query.isBlank()) all
+            else all.filter { c ->
+                c.name.contains(query, ignoreCase = true) ||
+                        c.location.contains(query, ignoreCase = true) ||
+                        c.address.contains(query, ignoreCase = true)
+            }
         }
     }
 
-    val favorites = filteredAll.filter { appVm.isFavoriteClub(it.id) }
-    val currentList = if (tab == ClubsTab.Favorites) favorites else filteredAll
+    val favorites by remember { derivedStateOf { filteredAll.filter { it.id in favoriteIds } } }
+    val currentList by remember { derivedStateOf { if (tab == ClubsTab.Favorites) favorites else filteredAll } }
 
     Column(
         modifier = Modifier
@@ -147,10 +151,9 @@ fun ClubsListScreen(
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(currentList, key = { it.id }) { club ->
-                    val isFav = appVm.isFavoriteClub(club.id)
                     ClubCard(
                         club = club,
-                        isFavorite = isFav,
+                        isFavorite = club.id in favoriteIds,
                         onToggleFavorite = { appVm.toggleFavoriteClub(club.id) },
                         onOpen = { if (!club.isBlocked) onOpenClub(club.id) }
                     )
@@ -256,6 +259,7 @@ private fun ClubCard(
     onToggleFavorite: () -> Unit,
     onOpen: () -> Unit
 ) {
+    val placeholder = painterResource(R.drawable.placeholder_club)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -266,9 +270,9 @@ private fun ClubCard(
                 AsyncImage(
                     model = club.imageUrl,
                     contentDescription = club.name,
-                    placeholder = painterResource(R.drawable.placeholder_club),
-                    error = painterResource(R.drawable.placeholder_club),
-                    fallback = painterResource(R.drawable.placeholder_club),
+                    placeholder = placeholder,
+                    error = placeholder,
+                    fallback = placeholder,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()

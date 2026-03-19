@@ -31,6 +31,7 @@ import com.example.computerclub.model.FloorplanFloorPos
 import com.example.computerclub.model.FloorplanWallPos
 import com.example.computerclub.model.WallOrientation
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import com.example.computerclub.model.TimeRange
 import com.example.computerclub.vm.AppViewModel
 import kotlinx.coroutines.launch
@@ -41,6 +42,10 @@ import java.util.Locale
 import kotlin.math.ceil
 
 private const val DAY_MIN = 24 * 60
+
+private val SEATS_TIME_FMT = DateTimeFormatter.ofPattern("HH:mm")
+private val SEATS_DATE_FMT = DateTimeFormatter.ofPattern("dd.MM")
+private val SEATS_DOW_FMT = DateTimeFormatter.ofPattern("EEE", Locale("ru"))
 
 // UI: только 3 состояния (свободно / занято / выбрано)
 private enum class SeatKind { FREE, BOOKED, SELECTED }
@@ -82,7 +87,7 @@ fun BookingSeatsScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    val isFav = appVm.isFavoriteClub(club.id)
+    val isFav by remember { derivedStateOf { appVm.isFavoriteClub(club.id) } }
 
     val draft = appVm.bookingDraft
     val startDt = appVm.startDateTime(draft)
@@ -91,20 +96,26 @@ fun BookingSeatsScreen(
     val durationMin = remember(startDt, endDt) {
         Duration.between(startDt, endDt).toMinutes().coerceAtLeast(0).toInt()
     }
+    val headerText = remember(startDt, endDt, durationMin) { headerLine(startDt, endDt, durationMin) }
 
     var seatInfo by remember { mutableStateOf<String?>(null) }
 
     // zoom/pan
+    var fitScale by remember { mutableStateOf(1f) }
+    var fitPan by remember { mutableStateOf(Offset.Zero) }
     var userScale by remember { mutableStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
-    fun zoomIn() { userScale = (userScale * 1.15f).coerceIn(0.5f, 5f) }
-    fun zoomOut() { userScale = (userScale / 1.15f).coerceIn(0.5f, 5f) }
-    fun resetView() { userScale = 1f; pan = Offset.Zero }
+    var userHasZoomed by remember { mutableStateOf(false) }
+    fun zoomIn() { userHasZoomed = true; userScale = (userScale * 1.15f).coerceIn(0.5f, 5f) }
+    fun zoomOut() { userHasZoomed = true; userScale = (userScale / 1.15f).coerceIn(0.5f, 5f) }
+    fun resetView() { userScale = fitScale; pan = fitPan; userHasZoomed = false }
 
     // layout берём из опубликованной схемы (если есть) — иначе fallback на алгоритм по умолчанию
     val layout: List<FloorplanSeatPos> = remember(seats, appVm.floorplanSeats) {
         if (appVm.floorplanSeats.isNotEmpty()) appVm.floorplanSeats else buildLayoutPercent(seats)
     }
+    // Map для O(1) lookup вместо O(n) firstOrNull внутри layout.forEach
+    val seatsById = remember(seats) { seats.associateBy { it.id } }
     val walls: List<FloorplanWallPos> = appVm.floorplanWalls
     val floor: List<FloorplanFloorPos> = appVm.floorplanFloor
 
@@ -142,7 +153,7 @@ fun BookingSeatsScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = headerLine(startDt, endDt, durationMin),
+                        text = headerText,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -181,6 +192,48 @@ fun BookingSeatsScreen(
                     val planW = maxWidth
                     val planH = maxHeight
 
+                    val density = LocalDensity.current.density
+
+                    // вычисляем масштаб, при котором весь контент помещается в контейнер
+                    val computedFitScale = remember(layout, planW, planH) {
+                        if (layout.isEmpty() || planW.value == 0f || planH.value == 0f) return@remember 1f
+                        var maxRight = 0f
+                        var maxBottom = 0f
+                        layout.forEach { p ->
+                            val nW = planW.value * p.w
+                            val nH = planH.value * p.h
+                            val sW = nW.coerceIn(56f, 96f)
+                            val sH = nH.coerceIn(56f, 96f)
+                            val sx = if (nW > 0f) sW / nW else 1f
+                            val sy = if (nH > 0f) sH / nH else 1f
+                            maxRight = maxOf(maxRight, planW.value * p.x * sx + sW)
+                            maxBottom = maxOf(maxBottom, planH.value * p.y * sy + sH)
+                        }
+                        if (maxRight > 0f && maxBottom > 0f)
+                            minOf(planW.value / maxRight, planH.value / maxBottom, 1f)
+                        else 1f
+                    }
+
+                    // graphicsLayer масштабирует от центра контейнера —
+                    // нужен pan-офсет чтобы содержимое (начинающееся от левого/верхнего края) стало видно
+                    // panX = planW/2 * (scale - 1), переведено в пиксели
+                    val computedFitPan = remember(computedFitScale, planW, planH, density) {
+                        Offset(
+                            planW.value * density / 2f * (computedFitScale - 1f),
+                            planH.value * density / 2f * (computedFitScale - 1f)
+                        )
+                    }
+
+                    // применяем автоматически, пока пользователь не начал зумировать вручную
+                    LaunchedEffect(computedFitScale, computedFitPan) {
+                        fitScale = computedFitScale
+                        fitPan = computedFitPan
+                        if (!userHasZoomed) {
+                            userScale = computedFitScale
+                            pan = computedFitPan
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -192,6 +245,7 @@ fun BookingSeatsScreen(
                             }
                             .pointerInput(Unit) {
                                 detectTransformGestures { _, panChange, zoom, _ ->
+                                    userHasZoomed = true
                                     userScale = (userScale * zoom).coerceIn(0.5f, 5f)
                                     pan += panChange
                                 }
@@ -253,7 +307,7 @@ fun BookingSeatsScreen(
                         }
 
                         layout.forEach { p ->
-                            val seat = seats.firstOrNull { it.id == p.seatId } ?: return@forEach
+                            val seat = seatsById[p.seatId] ?: return@forEach
                             val selectedSeat = draft.selectedSeatIds.contains(seat.id)
                             // доступность приходит с сервера: любое занятое = BOOKED
                             val isBooked = appVm.busySeatIds.contains(seat.id)
@@ -308,6 +362,11 @@ fun BookingSeatsScreen(
                 )
             }
 
+            val selectedLabel = remember(draft.selectedSeatIds, seats) { selectedSeatsLabel(draft.selectedSeatIds, seats) }
+            val bookingTotal = remember(draft.selectedSeatIds) {
+                if (draft.selectedSeatIds.isNotEmpty()) appVm.bookingTotalRub(draft.selectedSeatIds) else null
+            }
+
             // --- Низ ---
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -315,13 +374,12 @@ fun BookingSeatsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = selectedSeatsLabel(draft.selectedSeatIds, seats),
+                    text = selectedLabel,
                     style = MaterialTheme.typography.bodyLarge
                 )
-                if (draft.selectedSeatIds.isNotEmpty()) {
-                    val total = appVm.bookingTotalRub(draft.selectedSeatIds)
+                if (draft.selectedSeatIds.isNotEmpty() && bookingTotal != null) {
                     Text(
-                        text = "${total} ₽",
+                        text = "${bookingTotal} ₽",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -379,7 +437,7 @@ fun BookingSeatsScreen(
             dragHandle = { BottomSheetDefaults.DragHandle() }
         ) {
             when (sheetKind) {
-                SeatsSheetKind.INFO -> SeatsInfoSheet()
+                SeatsSheetKind.INFO -> SeatsInfoSheet(appVm.seatSpecs)
                 SeatsSheetKind.MAX_TIME -> SeatsMaxTimeSheet(maxTimeRows)
                 null -> Unit
             }
@@ -401,7 +459,7 @@ fun BookingSeatsScreen(
 // --- Шторки ---
 
 @Composable
-private fun SeatsInfoSheet() {
+private fun SeatsInfoSheet(specs: List<com.example.computerclub.data.network.dto.SeatSpecResponseDto>) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -410,27 +468,22 @@ private fun SeatsInfoSheet() {
     ) {
         Text("Информация о компьютерах", style = MaterialTheme.typography.titleLarge)
 
-        Card(shape = RoundedCornerShape(16.dp)) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("СТАНДАРТ", style = MaterialTheme.typography.titleMedium)
-                SpecLine("Процессор", "Intel Core i5 / Ryzen 5")
-                SpecLine("Видеокарта", "RTX 3060 / RX 6600")
-                SpecLine("ОЗУ", "16 ГБ DDR4")
-                SpecLine("Накопитель", "SSD 512 ГБ")
-                SpecLine("Монитор", "24\" 144 Гц")
-                SpecLine("Периферия", "Механика + игровая мышь")
-            }
-        }
-
-        Card(shape = RoundedCornerShape(16.dp)) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("VIP", style = MaterialTheme.typography.titleMedium)
-                SpecLine("Процессор", "Intel Core i7 / Ryzen 7")
-                SpecLine("Видеокарта", "RTX 4070 / RX 7800 XT")
-                SpecLine("ОЗУ", "32 ГБ DDR5")
-                SpecLine("Накопитель", "NVMe SSD 1 ТБ")
-                SpecLine("Монитор", "27\" 240 Гц")
-                SpecLine("Периферия", "Топ-гарнитура + премиум мышь")
+        if (specs.isEmpty()) {
+            Text(
+                "Информация не указана",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            specs.forEach { spec ->
+                Card(shape = RoundedCornerShape(16.dp)) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(spec.title, style = MaterialTheme.typography.titleMedium)
+                        spec.specs.forEach { line ->
+                            SpecLine(line.name, line.value)
+                        }
+                    }
+                }
             }
         }
     }
@@ -690,11 +743,8 @@ private fun selectedSeatsLabel(selectedIds: Set<String>, seats: List<Seat>): Str
 // --- Строка времени ---
 
 private fun headerLine(startDt: LocalDateTime, endDt: LocalDateTime, durationMin: Int): String {
-    val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
-    val dateFmt = DateTimeFormatter.ofPattern("dd.MM")
-    val dowFmt = DateTimeFormatter.ofPattern("EEE", Locale("ru"))
     val dur = formatDuration(durationMin)
-    return "${startDt.format(timeFmt)}–${endDt.format(timeFmt)}, ${startDt.format(dateFmt)} [${startDt.format(dowFmt).lowercase()}] • $dur"
+    return "${startDt.format(SEATS_TIME_FMT)}–${endDt.format(SEATS_TIME_FMT)}, ${startDt.format(SEATS_DATE_FMT)} [${startDt.format(SEATS_DOW_FMT).lowercase()}] • $dur"
 }
 
 private fun formatDuration(deltaMin: Int): String {
