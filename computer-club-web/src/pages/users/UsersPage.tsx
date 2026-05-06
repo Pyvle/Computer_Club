@@ -1,35 +1,84 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
-  App,
-  Button,
-  Form,
-  Input,
-  Modal,
-  Popconfirm,
-  Select,
-  Space,
-  Switch,
-  Table,
-  Tabs,
-  Tag,
-  Typography,
+  App, Button, Col, Form, Input, Modal,
+  Popconfirm, Row, Select, Space, Switch, Table, Tabs, Tag, Tooltip,
 } from 'antd'
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
+import {
+  PlusOutlined, DeleteOutlined, ReloadOutlined,
+  UserOutlined, TeamOutlined, SafetyCertificateOutlined, CheckCircleOutlined,
+  EyeOutlined, CalendarOutlined, ShopOutlined, RiseOutlined, EnvironmentOutlined,
+} from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import dayjs from 'dayjs'
 import apiClient from '../../utils/apiClient'
 import type { AdminUserResponse, CreateUserRequest, GlobalRole } from '../../types'
+import { tokens } from '../../theme/tokens'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
+import StatCard from '../../components/ui/StatCard'
+import StatusBadge from '../../components/ui/StatusBadge'
+import EmptyState from '../../components/ui/EmptyState'
 
-const ROLE_LABELS: Record<GlobalRole, string> = {
-  USER: 'Пользователь',
-  GLOBAL_ADMIN: 'Глобальный админ',
+// --- Роли ---
+
+const ROLE_META: Record<GlobalRole, { label: string; variant: 'error' | 'default' }> = {
+  GLOBAL_ADMIN: { label: 'Менеджер платформы', variant: 'error' },
+  USER:         { label: 'Пользователь',       variant: 'default' },
 }
+
+// --- Quick-filter по активности ---
+
+type ActiveFilter = 'all' | 'active' | 'inactive'
+
+function ActiveQuickFilter({ value, onChange }: { value: ActiveFilter; onChange: (v: ActiveFilter) => void }) {
+  const opts: { label: string; value: ActiveFilter }[] = [
+    { label: 'Все',         value: 'all' },
+    { label: 'Активные',    value: 'active' },
+    { label: 'Заблокированные', value: 'inactive' },
+  ]
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      {opts.map((o) => {
+        const isSelected = o.value === value
+        return (
+          <button
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            style={{
+              padding: '4px 12px',
+              borderRadius: 20,
+              fontSize: 13,
+              fontWeight: isSelected ? 600 : 400,
+              cursor: 'pointer',
+              border: `1px solid ${isSelected ? tokens.colors.primary : tokens.colors.border}`,
+              background: isSelected ? tokens.colors.primarySoft : tokens.colors.surface,
+              color: isSelected ? tokens.colors.primary : tokens.colors.textSecondary,
+              transition: 'all 0.15s',
+              outline: 'none',
+            }}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// --- Основной компонент ---
 
 export default function UsersPage() {
   const { message } = App.useApp()
+  const navigate = useNavigate()
 
   const [users, setUsers] = useState<AdminUserResponse[]>([])
   const [loading, setLoading] = useState(false)
   const [togglingId, setTogglingId] = useState<number | null>(null)
+
+  // фильтры — общие для обоих табов
+  const [search, setSearch] = useState('')
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('all')
 
   // --- Модал создания ---
   const [createOpen, setCreateOpen] = useState(false)
@@ -91,7 +140,7 @@ export default function UsersPage() {
       await apiClient.put(`/admin/global/users/${roleTarget.id}/global-role`, { role: values.globalRole })
       message.success('Роль обновлена')
       setUsers((prev) =>
-        prev.map((u) => (u.id === roleTarget.id ? { ...u, globalRole: values.globalRole } : u)),
+        prev.map((u) => (u.id === roleTarget.id ? { ...u, globalRole: values.globalRole } : u))
       )
       setRoleModalOpen(false)
     } catch {
@@ -121,43 +170,105 @@ export default function UsersPage() {
     }
   }
 
-  const activeSwitch = (user: AdminUserResponse) => (
-    <Switch
-      checked={user.isActive}
-      loading={togglingId === user.id}
-      onChange={(checked) => handleToggleActive(user, checked)}
-    />
-  )
+  // --- Статистика ---
+
+  const stats = useMemo(() => ({
+    total:    users.length,
+    active:   users.filter((u) => u.isActive).length,
+    admins:   users.filter((u) => u.globalRole === 'GLOBAL_ADMIN').length,
+    appUsers: users.filter((u) => u.globalRole !== 'GLOBAL_ADMIN').length,
+  }), [users])
+
+  // --- Фильтрация ---
+
+  function applyFilters(list: AdminUserResponse[]) {
+    let result = list
+    if (activeFilter === 'active')   result = result.filter((u) => u.isActive)
+    if (activeFilter === 'inactive') result = result.filter((u) => !u.isActive)
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      result = result.filter((u) => (u.phone ?? '').toLowerCase().includes(q) || String(u.id).includes(q))
+    }
+    return result
+  }
+
+  const admins   = useMemo(() => applyFilters(users.filter((u) => u.hasPassword)),              [users, activeFilter, search])
+  const appUsers = useMemo(() => applyFilters(users.filter((u) => u.globalRole !== 'GLOBAL_ADMIN')), [users, activeFilter, search])
+
+  // --- Переключатель активности ---
+
+  function ActiveSwitch({ user }: { user: AdminUserResponse }) {
+    return (
+      <Space size={8}>
+        <Switch
+          checked={user.isActive}
+          size="small"
+          loading={togglingId === user.id}
+          onChange={(checked) => handleToggleActive(user, checked)}
+        />
+        <StatusBadge
+          label={user.isActive ? 'Активен' : 'Заблокирован'}
+          variant={user.isActive ? 'success' : 'error'}
+        />
+      </Space>
+    )
+  }
+
+  // --- Колонки администраторов ---
 
   const adminColumns: ColumnsType<AdminUserResponse> = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: 'Телефон', dataIndex: 'phone', render: (v: string | null) => v ?? '—' },
+    { title: 'ID', dataIndex: 'id', width: 70, sorter: (a, b) => Number(a.id) - Number(b.id) },
     {
-      title: 'Роль',
-      dataIndex: 'globalRole',
-      width: 180,
-      render: (role: GlobalRole) => (
-        <Tag color={role === 'GLOBAL_ADMIN' ? 'red' : 'default'}>{ROLE_LABELS[role]}</Tag>
+      title: 'Телефон',
+      dataIndex: 'phone',
+      render: (v: string | null) => (
+        <span style={{ fontWeight: 500 }}>{v ?? '—'}</span>
       ),
     },
     {
-      title: 'Активен',
-      dataIndex: 'isActive',
-      width: 100,
-      render: (_, record) => activeSwitch(record),
+      title: 'Роль / Клуб',
+      render: (_, record) => {
+        if (record.globalRole === 'GLOBAL_ADMIN') {
+          const m = ROLE_META['GLOBAL_ADMIN']
+          return <StatusBadge label={m.label} variant={m.variant} />
+        }
+        if (record.clubRoles.length > 0) {
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {record.clubRoles.map((cr) => (
+                <div key={cr.clubId} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Tag
+                    color={cr.role === 'OWNER' ? 'gold' : 'blue'}
+                    style={{ margin: 0, flexShrink: 0 }}
+                  >
+                    {cr.role === 'OWNER' ? 'Владелец' : 'Персонал'}
+                  </Tag>
+                  <span style={{ fontSize: 13, color: tokens.colors.text }}>{cr.clubName}</span>
+                </div>
+              ))}
+            </div>
+          )
+        }
+        return <span style={{ color: tokens.colors.textMuted }}>—</span>
+      },
+    },
+    {
+      title: 'Статус',
+      width: 175,
+      render: (_, record) => <ActiveSwitch user={record} />,
     },
     {
       title: 'Создан',
       dataIndex: 'createdAt',
-      width: 160,
-      render: (v: string) => new Date(v).toLocaleDateString('ru-RU'),
+      width: 110,
+      render: (v: string) => dayjs(v).format('DD.MM.YYYY'),
     },
     {
       title: '',
       key: 'actions',
-      width: 180,
+      width: 130,
       render: (_, record) => (
-        <Space>
+        <Space size={4}>
           <Button size="small" onClick={() => openRoleModal(record)}>
             Роль
           </Button>
@@ -176,68 +287,238 @@ export default function UsersPage() {
     },
   ]
 
+  // --- Колонки пользователей приложения ---
+
   const appUserColumns: ColumnsType<AdminUserResponse> = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: 'Телефон', dataIndex: 'phone', render: (v: string | null) => v ?? '—' },
+    { title: 'ID', dataIndex: 'id', width: 60, sorter: (a, b) => Number(a.id) - Number(b.id) },
     {
-      title: 'Активен',
-      dataIndex: 'isActive',
-      width: 100,
-      render: (_, record) => activeSwitch(record),
+      title: 'Телефон',
+      dataIndex: 'phone',
+      render: (v: string | null) => (
+        <span style={{ fontWeight: 500 }}>{v ?? '—'}</span>
+      ),
     },
     {
-      title: 'Создан',
-      dataIndex: 'createdAt',
+      title: 'Статус',
       width: 160,
-      render: (v: string) => new Date(v).toLocaleDateString('ru-RU'),
+      render: (_, record) => <ActiveSwitch user={record} />,
+    },
+    {
+      title: (
+        <Tooltip title="Всего бронирований">
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <CalendarOutlined />Брони
+          </span>
+        </Tooltip>
+      ),
+      dataIndex: 'bookingsCount',
+      width: 80,
+      align: 'right' as const,
+      sorter: (a, b) => a.bookingsCount - b.bookingsCount,
+      render: (v: number) => <span style={{ fontWeight: 500 }}>{v}</span>,
+    },
+    {
+      title: (
+        <Tooltip title="Всего покупок">
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <ShopOutlined />Покупки
+          </span>
+        </Tooltip>
+      ),
+      dataIndex: 'purchasesCount',
+      width: 90,
+      align: 'right' as const,
+      sorter: (a, b) => a.purchasesCount - b.purchasesCount,
+      render: (v: number) => <span style={{ fontWeight: 500 }}>{v}</span>,
+    },
+    {
+      title: (
+        <Tooltip title="Посещённых клубов">
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <EnvironmentOutlined />Клубы
+          </span>
+        </Tooltip>
+      ),
+      dataIndex: 'visitedClubsCount',
+      width: 80,
+      align: 'right' as const,
+      sorter: (a: AdminUserResponse, b: AdminUserResponse) => a.visitedClubsCount - b.visitedClubsCount,
+      render: (v: number) => <span style={{ fontWeight: 500 }}>{v > 0 ? v : <span style={{ color: tokens.colors.textMuted }}>—</span>}</span>,
+    },
+    {
+      title: (
+        <Tooltip title="Сумма оплаченных покупок">
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <RiseOutlined />Оплачено
+          </span>
+        </Tooltip>
+      ),
+      dataIndex: 'totalSpentRub',
+      width: 110,
+      align: 'right' as const,
+      sorter: (a, b) => a.totalSpentRub - b.totalSpentRub,
+      render: (v: number) => (
+        <span style={{ fontWeight: 600, color: v > 0 ? tokens.colors.success : tokens.colors.textMuted }}>
+          {v > 0 ? `${v.toLocaleString('ru-RU')} ₽` : '—'}
+        </span>
+      ),
+    },
+    {
+      title: 'Последняя активность',
+      dataIndex: 'lastActivityAt',
+      width: 140,
+      sorter: (a, b) => (a.lastActivityAt ?? '').localeCompare(b.lastActivityAt ?? ''),
+      render: (v: string | null) =>
+        v ? dayjs(v).format('DD.MM.YYYY HH:mm') : <span style={{ color: tokens.colors.textMuted }}>—</span>,
+    },
+    {
+      title: 'Регистрация',
+      dataIndex: 'createdAt',
+      width: 110,
+      render: (v: string) => dayjs(v).format('DD.MM.YYYY'),
+    },
+    {
+      title: '',
+      key: 'details',
+      width: 80,
+      render: (_, record) => (
+        <Button
+          size="small"
+          icon={<EyeOutlined />}
+          onClick={() => navigate(`/admin/platform/users/${record.id}`)}
+        >
+          Детали
+        </Button>
+      ),
     },
   ]
 
-  const admins = users.filter((u) => u.hasPassword)
-  const appUsers = users.filter((u) => !u.hasPassword)
+  // --- Панель фильтров ---
 
-  const adminTab = (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
-          Создать администратора
-        </Button>
-      </div>
-      <Table
-        rowKey="id"
-        columns={adminColumns}
-        dataSource={admins}
-        loading={loading}
-        pagination={{ pageSize: 20 }}
-        size="middle"
+  const FilterBar = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+      <ActiveQuickFilter value={activeFilter} onChange={setActiveFilter} />
+      <Input.Search
+        placeholder="Поиск по телефону или ID"
+        allowClear
+        style={{ maxWidth: 280 }}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        size="small"
       />
-    </>
-  )
-
-  const appUserTab = (
-    <Table
-      rowKey="id"
-      columns={appUserColumns}
-      dataSource={appUsers}
-      loading={loading}
-      pagination={{ pageSize: 20 }}
-      size="middle"
-    />
+    </div>
   )
 
   return (
     <>
-      <Typography.Title level={4} style={{ marginBottom: 16 }}>
-        Пользователи
-      </Typography.Title>
-
-      <Tabs
-        defaultActiveKey="admins"
-        items={[
-          { key: 'admins', label: 'Администраторы', children: adminTab },
-          { key: 'app-users', label: 'Пользователи приложения', children: appUserTab },
-        ]}
+      <PageHeader
+        title="Пользователи"
+        subtitle="Менеджеры платформы, персонал клубов и пользователи мобильного приложения"
+        extra={
+          <Button icon={<ReloadOutlined />} onClick={fetchUsers} loading={loading}>
+            Обновить
+          </Button>
+        }
       />
+
+      {/* Статистика */}
+      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+        <Col xs={12} sm={6}>
+          <StatCard label="Всего" value={stats.total} icon={<UserOutlined />} />
+        </Col>
+        <Col xs={12} sm={6}>
+          <StatCard
+            label="Активных"
+            value={stats.active}
+            icon={<CheckCircleOutlined />}
+            accentColor={tokens.colors.success}
+          />
+        </Col>
+        <Col xs={12} sm={6}>
+          <StatCard
+            label="Менеджеры платформы"
+            value={stats.admins}
+            icon={<SafetyCertificateOutlined />}
+            accentColor={tokens.colors.error}
+          />
+        </Col>
+        <Col xs={12} sm={6}>
+          <StatCard
+            label="Пользователи"
+            value={stats.appUsers}
+            icon={<TeamOutlined />}
+            accentColor={tokens.colors.info}
+          />
+        </Col>
+      </Row>
+
+      {/* Таблицы */}
+      <SectionCard>
+        <Tabs
+          defaultActiveKey="admins"
+          items={[
+            {
+              key: 'admins',
+              label: `Администраторы (${users.filter((u) => u.hasPassword).length})`,
+              children: (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4, flexWrap: 'wrap', gap: 12 }}>
+                    {FilterBar}
+                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
+                      Создать администратора
+                    </Button>
+                  </div>
+                  <Table
+                    rowKey="id"
+                    columns={adminColumns}
+                    dataSource={admins}
+                    loading={loading}
+                    pagination={{ pageSize: 20 }}
+                    size="middle"
+                    locale={{
+                      emptyText: (
+                        <EmptyState
+                          icon={<SafetyCertificateOutlined />}
+                          title="Менеджеров платформы нет"
+                          description={search || activeFilter !== 'all' ? 'Нет совпадений по фильтру' : 'Создайте первого менеджера платформы'}
+                          actionLabel={!search && activeFilter === 'all' ? 'Создать менеджера' : undefined}
+                          onAction={!search && activeFilter === 'all' ? openCreateModal : undefined}
+                        />
+                      ),
+                    }}
+                  />
+                </>
+              ),
+            },
+            {
+              key: 'app-users',
+              label: `Пользователи (${users.filter((u) => u.globalRole !== 'GLOBAL_ADMIN').length})`,
+              children: (
+                <>
+                  {FilterBar}
+                  <Table
+                    rowKey="id"
+                    columns={appUserColumns}
+                    dataSource={appUsers}
+                    loading={loading}
+                    pagination={{ pageSize: 20 }}
+                    size="middle"
+                    locale={{
+                      emptyText: (
+                        <EmptyState
+                          icon={<UserOutlined />}
+                          title="Пользователей нет"
+                          description={search || activeFilter !== 'all' ? 'Нет совпадений по фильтру' : 'Пользователи появятся после регистрации в приложении'}
+                        />
+                      ),
+                    }}
+                  />
+                </>
+              ),
+            },
+          ]}
+        />
+      </SectionCard>
 
       {/* Модал создания администратора */}
       <Modal
@@ -254,9 +535,7 @@ export default function UsersPage() {
           <Form.Item
             name="phone"
             label="Номер телефона"
-            rules={[
-              { required: true, message: 'Введите номер телефона' },
-            ]}
+            rules={[{ required: true, message: 'Введите номер телефона' }]}
           >
             <Input placeholder="+7XXXXXXXXXX" autoComplete="off" />
           </Form.Item>
@@ -273,8 +552,8 @@ export default function UsersPage() {
           <Form.Item name="globalRole" label="Роль" rules={[{ required: true }]}>
             <Select
               options={[
-                { label: ROLE_LABELS.USER, value: 'USER' },
-                { label: ROLE_LABELS.GLOBAL_ADMIN, value: 'GLOBAL_ADMIN' },
+                { label: ROLE_META.USER.label,         value: 'USER' },
+                { label: ROLE_META.GLOBAL_ADMIN.label, value: 'GLOBAL_ADMIN' },
               ]}
             />
           </Form.Item>
@@ -296,8 +575,8 @@ export default function UsersPage() {
           <Form.Item name="globalRole" label="Роль" rules={[{ required: true }]}>
             <Select
               options={[
-                { label: ROLE_LABELS.USER, value: 'USER' },
-                { label: ROLE_LABELS.GLOBAL_ADMIN, value: 'GLOBAL_ADMIN' },
+                { label: ROLE_META.USER.label,         value: 'USER' },
+                { label: ROLE_META.GLOBAL_ADMIN.label, value: 'GLOBAL_ADMIN' },
               ]}
             />
           </Form.Item>

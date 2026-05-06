@@ -34,7 +34,9 @@ data class BookingItemDto(
     val endAt: String,
     val seatIds: List<Long>,
     val seatLabels: List<String>,
-    val totalRub: Int
+    val totalRub: Int,
+    val rateRubPerHourSnapshot: Int = 0,
+    val packageHours: Int? = null
 )
 
 @Serializable
@@ -50,6 +52,7 @@ data class ProductItemDto(
 data class PurchaseDetailsDto(
     val purchaseId: Long,
     val clubId: Long,
+    val clubName: String = "",
     val createdAt: String,
     val paymentStatus: String,
     val bookingItems: List<BookingItemDto>,

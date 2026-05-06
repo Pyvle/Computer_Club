@@ -6,6 +6,8 @@ server:
     include-stacktrace: on_param
 
 spring:
+  config:
+    import: optional:file:./application-secrets.yaml
   application:
     name: computer-club-backend
   profiles:
@@ -13,8 +15,8 @@ spring:
 
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:clubdb}
-    username: ${DB_USER:club}
-    password: ${DB_PASSWORD:club}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
 
   jpa:
     hibernate:
@@ -25,6 +27,10 @@ spring:
         format_sql: true
     show-sql: true
 
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
 
   flyway:
     enabled: true
@@ -70,7 +76,7 @@ app:
     issuer: computer-club-backend
     access-exp-minutes: 15
     refresh-exp-days: 30
-    secret: ${JWT_SECRET:change_me_very_long_secret_32_chars_minimum}
+    secret: ${JWT_SECRET}
 
   otp:
     ttl-seconds: 180

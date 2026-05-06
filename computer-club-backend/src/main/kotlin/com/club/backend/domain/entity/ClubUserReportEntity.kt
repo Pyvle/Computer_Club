@@ -1,5 +1,6 @@
 package com.club.backend.domain.entity
 
+import com.club.backend.domain.enum.ClubReportStatus
 import jakarta.persistence.*
 import java.time.Instant
 
@@ -20,6 +21,10 @@ class ClubUserReportEntity(
 
     @Column(columnDefinition = "text", nullable = false)
     val message: String,
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    var status: ClubReportStatus = ClubReportStatus.NEW,
 
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant = Instant.now()

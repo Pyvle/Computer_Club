@@ -17,6 +17,8 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { LinkOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import apiClient from '../../utils/apiClient'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
 import {
   AdminClubCatalogResponse,
   AdminClubCatalogProductResponse,
@@ -194,31 +196,34 @@ export default function ClubCatalogPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Space>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            Каталог клуба
-          </Typography.Title>
-          <Tag color="blue">{linkedCount} подключено</Tag>
-        </Space>
-        <Select
-          allowClear
-          placeholder="Все категории"
-          style={{ width: 200 }}
-          value={filterCategoryId}
-          onChange={(v) => setFilterCategoryId(v ?? null)}
-          options={catalog?.categories.map((c) => ({ value: c.id, label: c.title }))}
-        />
-      </div>
-
-      <Table
-        rowKey="productId"
-        dataSource={filteredProducts}
-        columns={columns}
-        loading={loading}
-        pagination={{ pageSize: 20, showSizeChanger: false }}
-        rowClassName={(row) => (!row.productIsActive ? 'ant-table-row-disabled' : '')}
+      <PageHeader
+        title="Каталог"
+        subtitle="Управление товарами клуба — подключение глобальных товаров и настройка цен"
+        extra={
+          <Space>
+            <Tag color="blue">{linkedCount} подключено</Tag>
+            <Select
+              allowClear
+              placeholder="Все категории"
+              style={{ width: 200 }}
+              value={filterCategoryId}
+              onChange={(v) => setFilterCategoryId(v ?? null)}
+              options={catalog?.categories.map((c) => ({ value: c.id, label: c.title }))}
+            />
+          </Space>
+        }
       />
+
+      <SectionCard noPadding>
+        <Table
+          rowKey="productId"
+          dataSource={filteredProducts}
+          columns={columns}
+          loading={loading}
+          pagination={{ pageSize: 20, showSizeChanger: false }}
+          rowClassName={(row) => (!row.productIsActive ? 'ant-table-row-disabled' : '')}
+        />
+      </SectionCard>
 
       <Modal
         open={modalOpen}

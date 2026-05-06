@@ -1,5 +1,6 @@
 package com.club.backend.api.dto
 
+import com.club.backend.domain.enum.ClubReportStatus
 import java.time.Instant
 
 data class CreateReportRequest(
@@ -11,7 +12,12 @@ data class ClubUserReportResponse(
     val userId: Long,
     val userPhone: String?,
     val message: String,
+    val status: ClubReportStatus,
     val createdAt: Instant
+)
+
+data class UpdateReportStatusRequest(
+    val status: ClubReportStatus
 )
 
 /** Предупреждение от GLOBAL_ADMIN, видимое владельцу клуба. */

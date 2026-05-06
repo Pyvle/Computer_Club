@@ -34,8 +34,11 @@ class GlobalCatalogAdminService(
 
     @Transactional
     fun deleteCategory(categoryId: Long) {
-        if (productRepository.existsByCategoryId(categoryId))
-            throw IllegalStateException("Нельзя удалить категорию: в ней есть товары")
+        val productIds = productRepository.findAllByCategoryId(categoryId).mapNotNull { it.id }
+        if (productIds.isNotEmpty()) {
+            clubProductRepository.deleteAllByProductIdIn(productIds)
+            productRepository.deleteAllById(productIds)
+        }
         categoryRepository.deleteById(categoryId)
     }
 
@@ -63,6 +66,7 @@ class GlobalCatalogAdminService(
                 category = category,
                 title = req.title.trim(),
                 description = req.description,
+                imageUrl = req.imageUrl,
                 isActive = req.isActive
             )
         ).toDto()
@@ -70,8 +74,7 @@ class GlobalCatalogAdminService(
 
     @Transactional
     fun deleteProduct(productId: Long) {
-        if (clubProductRepository.existsByIdProductId(productId))
-            throw IllegalStateException("Нельзя удалить товар: он привязан к каталогу клуба")
+        clubProductRepository.deleteAllByProductId(productId)
         productRepository.deleteById(productId)
     }
 
@@ -86,6 +89,7 @@ class GlobalCatalogAdminService(
         p.category = category
         p.title = req.title.trim()
         p.description = req.description
+        p.imageUrl = req.imageUrl
         p.isActive = req.isActive
         return productRepository.save(p).toDto()
     }

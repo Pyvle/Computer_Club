@@ -1,0 +1,2 @@
+ALTER TABLE club_user_reports
+    ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'NEW';

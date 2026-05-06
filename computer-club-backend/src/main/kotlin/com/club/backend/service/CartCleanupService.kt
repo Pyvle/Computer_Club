@@ -4,6 +4,7 @@ import com.club.backend.repository.CartBookingLineRepository
 import com.club.backend.repository.CartProductLineRepository
 import com.club.backend.repository.CartRepository
 import jakarta.persistence.EntityNotFoundException
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -26,6 +27,10 @@ class CartCleanupService(
         cart.updatedAt = LocalDateTime.now()
         cartRepository.saveAndFlush(cart)
 
-        println("Cart cleared: cartId=${cart.id}, bookingsDeleted=$deletedBookings, productsDeleted=$deletedProducts")
+        logger.info("Cart cleared: cartId=${cart.id}, bookingsDeleted=$deletedBookings, productsDeleted=$deletedProducts")
+    }
+
+    companion object {
+        private val logger = LoggerFactory.getLogger(CartCleanupService::class.java)
     }
 }

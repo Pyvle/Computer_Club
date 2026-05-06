@@ -35,9 +35,20 @@ const GAP = 2
 const PADDING = 8
 const WALL_THICKNESS = 4
 const MIN_CELL_PX = 36
+const MIN_ZOOM = 0.35
+const MAX_ZOOM = 8
+const ZOOM_STEP = 0.25
 
 const FLOOR_BG: Record<RoomType, string> = { REGULAR: '#ffffff', VIP: '#fff8e6' }
 const VOID_BG = '#e2e4e8'
+
+function clampZoom(value: number) {
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Number.isFinite(value) ? value : 1))
+}
+
+function formatZoomLabel(value: number) {
+  return `${Math.round(value * 100)}%`
+}
 const SEAT_REGULAR_FREE = '#e6f4ff'
 const SEAT_VIP_FREE = '#fff7d6'
 const SEAT_UPCOMING = '#ffd591'
@@ -123,8 +134,10 @@ function FloorplanViewer({ floorplan, seats, bookingBySeatId, onSeatClick }: Vie
   const cols = Math.max(1, Math.floor(width / gridSize))
   const rows = Math.max(1, Math.floor(height / gridSize))
 
-  const defaultZoom = Math.max(1, Math.ceil(MIN_CELL_PX / gridSize))
-  const [zoom, setZoom] = useState(defaultZoom)
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+  const [fitZoom, setFitZoom] = useState(1)
+  const [autoFit, setAutoFit] = useState(true)
+  const [zoom, setZoom] = useState(1)
   const cellPx = gridSize * zoom
 
   const items = useMemo(
@@ -161,22 +174,60 @@ function FloorplanViewer({ floorplan, seats, bookingBySeatId, onSeatClick }: Vie
   const fontSize = Math.max(8, Math.min(12, cellPx * 0.3))
   const showLabel = cellPx >= 28
 
+  useEffect(() => {
+    setAutoFit(true)
+  }, [floorplan.id, floorplan.version, cols, rows, gridSize])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+
+    const updateFitZoom = () => {
+      const availableWidth = Math.max(160, viewport.clientWidth - PADDING * 2)
+      const availableHeight = Math.max(160, viewport.clientHeight - PADDING * 2)
+      const fitByWidth = (availableWidth - Math.max(0, (cols - 1) * GAP)) / Math.max(1, cols * gridSize)
+      const fitByHeight = (availableHeight - Math.max(0, (rows - 1) * GAP)) / Math.max(1, rows * gridSize)
+      const preferredZoom = Math.max(1, MIN_CELL_PX / gridSize)
+      const nextFitZoom = clampZoom(Math.min(preferredZoom, fitByWidth, fitByHeight))
+
+      setFitZoom(nextFitZoom)
+      if (autoFit) {
+        setZoom(nextFitZoom)
+      }
+    }
+
+    updateFitZoom()
+    const observer = new ResizeObserver(updateFitZoom)
+    observer.observe(viewport)
+    return () => observer.disconnect()
+  }, [autoFit, cols, rows, gridSize])
+
   return (
     <div>
       <div style={{ marginBottom: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
-        <Button size="small" onClick={() => setZoom((z) => Math.max(1, z - 1))}>
+        <Button size="small" onClick={() => {
+          setAutoFit(false)
+          setZoom((z) => clampZoom(z - ZOOM_STEP))
+        }}>
           −
         </Button>
-        <span style={{ fontSize: 12, color: '#666' }}>{zoom}×</span>
-        <Button size="small" onClick={() => setZoom((z) => Math.min(8, z + 1))}>
+        <span style={{ fontSize: 12, color: '#666' }}>{formatZoomLabel(zoom)}</span>
+        <Button size="small" onClick={() => {
+          setAutoFit(false)
+          setZoom((z) => clampZoom(z + ZOOM_STEP))
+        }}>
           +
         </Button>
-        <Button size="small" onClick={() => setZoom(defaultZoom)}>
-          сброс
+        <Button size="small" onClick={() => {
+          setAutoFit(true)
+          setZoom(fitZoom)
+        }}>
+          целиком
         </Button>
       </div>
 
       <div
+        ref={viewportRef}
         style={{
           overflowX: 'auto',
           overflowY: 'auto',
@@ -408,7 +459,7 @@ export default function ClubFloorplanLivePage() {
     setError(null)
     try {
       const list: FloorplanSummaryResponse[] = (
-        await apiClient.get(`/api/v1/admin/clubs/${clubId}/floorplans`)
+        await apiClient.get(`/admin/clubs/${clubId}/floorplans`)
       ).data
       const published = list.find((f) => f.status === 'PUBLISHED')
       if (!published) {
@@ -417,8 +468,8 @@ export default function ClubFloorplanLivePage() {
         return
       }
       const [fpRes, seatsRes] = await Promise.all([
-        apiClient.get(`/api/v1/admin/clubs/${clubId}/floorplans/${published.id}`),
-        apiClient.get(`/api/v1/admin/clubs/${clubId}/seats`),
+        apiClient.get(`/admin/clubs/${clubId}/floorplans/${published.id}`),
+        apiClient.get(`/admin/clubs/${clubId}/seats`),
       ])
       setFloorplan(fpRes.data)
       setSeats(seatsRes.data)
@@ -436,7 +487,7 @@ export default function ClubFloorplanLivePage() {
       try {
         const atStr = at.format('YYYY-MM-DDTHH:mm:ss')
         const res = await apiClient.get(
-          `/api/v1/admin/clubs/${clubId}/floorplan-bookings?at=${atStr}`,
+          `/admin/clubs/${clubId}/floorplan-bookings?at=${atStr}`,
         )
         setBookings(res.data)
       } catch {

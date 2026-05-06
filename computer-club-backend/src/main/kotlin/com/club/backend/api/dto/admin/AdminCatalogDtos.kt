@@ -56,6 +56,7 @@ data class CreateProductRequest(
     @field:NotBlank
     val title: String,
     val description: String? = null,
+    val imageUrl: String? = null,
     val isActive: Boolean = true
 )
 
@@ -65,6 +66,7 @@ data class UpdateProductRequest(
     @field:NotBlank
     val title: String,
     val description: String? = null,
+    val imageUrl: String? = null,
     val isActive: Boolean = true
 )
 

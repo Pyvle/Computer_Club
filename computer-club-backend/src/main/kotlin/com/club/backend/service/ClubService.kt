@@ -3,19 +3,44 @@ package com.club.backend.service
 import com.club.backend.api.dto.AvailableClubResponse
 import com.club.backend.api.dto.ClubResponse
 import com.club.backend.repository.ClubRepository
+import com.club.backend.repository.ClubSeatPriceRepository
 import com.club.backend.repository.ClubUserBlockRepository
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDateTime
 
 @Service
 class ClubService(
     private val clubRepository: ClubRepository,
-    private val clubUserBlockRepository: ClubUserBlockRepository
+    private val clubUserBlockRepository: ClubUserBlockRepository,
+    private val clubSeatPriceRepository: ClubSeatPriceRepository
 ) {
 
     @Transactional(readOnly = true)
+    fun getById(clubId: Long): ClubResponse {
+        val club = clubRepository.findById(clubId).orElseThrow {
+            ResponseStatusException(HttpStatus.NOT_FOUND, "Club not found")
+        }
+        val minPrice = clubSeatPriceRepository.findAllByClub_Id(clubId)
+            .minOfOrNull { it.pricePerHourRub }
+        return ClubResponse(
+            id = club.id!!,
+            name = club.name,
+            address = club.addressShort,
+            locationText = club.locationText,
+            description = club.description,
+            imageUrl = club.imageUrl,
+            latitude = club.latitude,
+            longitude = club.longitude,
+            minPricePerHourRub = minPrice
+        )
+    }
+
+    @Transactional(readOnly = true)
     fun getAllActive(): List<ClubResponse> {
+        val minPriceByClub = minPriceMap()
         return clubRepository.findAllByIsActiveTrueAndIsBlockedFalseOrderByIdAsc().map {
             ClubResponse(
                 id = it.id!!,
@@ -25,7 +50,8 @@ class ClubService(
                 description = it.description,
                 imageUrl = it.imageUrl,
                 latitude = it.latitude,
-                longitude = it.longitude
+                longitude = it.longitude,
+                minPricePerHourRub = minPriceByClub[it.id!!]
             )
         }
     }
@@ -39,6 +65,7 @@ class ClubService(
         val now = LocalDateTime.now()
         val activeBlocks = clubUserBlockRepository.findActiveBlocksForUser(userId, now)
             .associateBy { it.club.id!! }
+        val minPriceByClub = minPriceMap()
 
         return clubRepository.findAllByIsActiveTrueAndIsBlockedFalseOrderByIdAsc().map { club ->
             val b = activeBlocks[club.id!!]
@@ -53,8 +80,14 @@ class ClubService(
                 blockReason = b?.reason,
                 blockedUntil = b?.blockedUntil,
                 latitude = club.latitude,
-                longitude = club.longitude
+                longitude = club.longitude,
+                minPricePerHourRub = minPriceByClub[club.id!!]
             )
         }
     }
+
+    // один запрос на все клубы, не N запросов
+    private fun minPriceMap(): Map<Long, Int> =
+        clubSeatPriceRepository.findMinPricePerClub()
+            .associate { row -> (row[0] as Long) to (row[1] as Int) }
 }

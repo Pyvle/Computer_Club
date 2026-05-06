@@ -18,10 +18,8 @@ import android.content.pm.ApplicationInfo
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.computerclub.data.local.NotifPrefsStore
 import com.example.computerclub.data.local.TokenStore
 import com.example.computerclub.data.network.NetworkClient
-import com.example.computerclub.notifications.NotificationScheduler
 import com.example.computerclub.data.repository.AuthRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -83,24 +81,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val seatRepo = SeatRepository(network.seatApi)
     private val floorplanRepo = FloorplanRepository(network.floorplanApi)
     private val favoritesRepo = FavoritesRepository(network.favoritesApi)
-    private val notifPrefsStore = NotifPrefsStore(getApplication())
     private val timePackageApi = network.timePackageApi
     private val seatPriceApi = network.seatPriceApi
     private val reportRepo = ReportRepository(network.reportApi)
-
-    // --- Уведомления ---
-    var notificationsEnabled: Boolean by mutableStateOf(notifPrefsStore.peek())
-        private set
-
-
-    fun updateNotifications(enabled: Boolean) {
-        notificationsEnabled = enabled
-        viewModelScope.launch { notifPrefsStore.setEnabled(enabled) }
-        if (!enabled) {
-            // отменяем все запланированные напоминания
-            androidx.work.WorkManager.getInstance(getApplication()).cancelAllWorkByTag("booking_reminder")
-        }
-    }
 
     private fun selectedClubIdLongOrNull(): Long? =
         selectedClubId.toLongOrNull() ?: selectedClubId.removePrefix("c").toLongOrNull()
@@ -116,7 +99,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             try {
                 val me = network.authApi.me()
-                // В твоей модели User id — строка (ты создаёшь User("u1", ...))
                 user = User(
                     id = me.id.toString(),
                     phone = me.phone
@@ -124,7 +106,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadFavorites()
                 onSuccess()
             } catch (e: Exception) {
-                onError(e.message ?: "Не удалось загрузить профиль")
+                onError("Не удалось загрузить профиль")
             }
         }
     }
@@ -139,7 +121,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val res = authRepo.requestOtp(phone)
                 onSuccess(res.challengeId)
             } catch (e: Exception) {
-                onError(e.message ?: "Ошибка запроса кода")
+                onError("Ошибка запроса кода")
             }
         }
     }
@@ -168,7 +150,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadFavorites()
                 onSuccess()
             } catch (e: Exception) {
-                onError(e.message ?: "Неверный код или ошибка сети")
+                onError("Неверный код или ошибка сети")
             }
         }
     }
@@ -228,6 +210,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     var shopError: String? by mutableStateOf(null)
         private set
+
+    // --- Детали клуба (просмотр до выбора) ---
+    var clubDetailsSpecs: List<com.example.computerclub.data.network.dto.SeatSpecResponseDto> by mutableStateOf(emptyList())
+        private set
+
+    var clubDetailsPrices: List<com.example.computerclub.data.network.dto.SeatPriceResponseDto> by mutableStateOf(emptyList())
+        private set
+
+    var clubDetailsPackages: List<com.example.computerclub.data.network.dto.TimePackageResponseDto> by mutableStateOf(emptyList())
+        private set
+
+    var clubDetailsProducts: List<com.example.computerclub.data.network.dto.ClubProductResponseDto> by mutableStateOf(emptyList())
+        private set
+
+    var clubDetailsLoading: Boolean by mutableStateOf(false)
+        private set
+
+    // id клуба, для которого загружены детали — чтобы не перезагружать при повторном открытии
+    private var clubDetailsLoadedForId: Long? = null
 
     // --- Cart (server, products only for now) ---
     var cartSyncLoading: Boolean by mutableStateOf(false)
@@ -299,14 +300,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var seatsError: String? by mutableStateOf(null)
         private set
 
-    /**
-     * Строки брони в корзине ТЕКУЩЕГО клуба.
-     * Для другого клуба см. [bookingCartLinesFor].
-     */
+    /** Строки брони в корзине ТЕКУЩЕГО клуба. */
     val bookingCartLines: SnapshotStateList<CartBookingLine>
         get() = cartFor(selectedClubId).bookingLines
-
-    fun bookingCartLinesFor(clubId: String): SnapshotStateList<CartBookingLine> = cartFor(clubId).bookingLines
 
     // если пользователь редактирует бронь из корзины — тут хранится id строки
     var editingBookingId: String? by mutableStateOf(null)
@@ -320,8 +316,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val cartLines: SnapshotStateList<CartProductLine>
         get() = cartFor(selectedClubId).productLines
 
-    fun cartLinesFor(clubId: String): SnapshotStateList<CartProductLine> = cartFor(clubId).productLines
-
     fun isLoggedIn(): Boolean = user != null
 
     fun setClub(clubId: String) {
@@ -333,6 +327,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         clubSeats = emptyList()
         busySeatIds = emptySet()
         seatsError = null
+        // сбрасываем схему зала — иначе при смене клуба показывается старая схема до загрузки новой
+        floorplanSeats = emptyList()
+        floorplanWalls = emptyList()
+        floorplanFloor = emptyList()
+        floorplanNumCols = 0
+        floorplanNumRows = 0
         cartSyncedClubId = null
         localCartModified = false
     }
@@ -361,8 +361,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun applyServerCartProducts(cart: CartResponseDto) {
-        val lines = cartFor(selectedClubId).productLines
+    private fun applyServerCartProducts(cart: CartResponseDto, clubId: String) {
+        val lines = cartFor(clubId).productLines
         Log.d("Cart", "applyServerCartProducts: replacing ${lines.size} items with ${cart.products.size} from server")
         lines.clear()
         cart.products.forEach { p ->
@@ -374,14 +374,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     variant = null,
                     qty = p.qty,
                     lineId = p.lineId,
-                    clubId = selectedClubId
+                    clubId = clubId
                 )
             )
         }
     }
 
-    private fun applyServerCartBookings(cart: CartResponseDto) {
-        val lines = cartFor(selectedClubId).bookingLines
+    private fun applyServerCartBookings(cart: CartResponseDto, clubId: String) {
+        val lines = cartFor(clubId).bookingLines
         lines.clear()
 
         cart.bookings.forEach { b ->
@@ -393,7 +393,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             lines.add(
                 CartBookingLine(
                     id = b.lineId.toString(),
-                    clubId = selectedClubId,
+                    clubId = clubId,
                     date = baseDate,
                     startDayOffset = 0,
                     startMin = start.hour * 60 + start.minute,
@@ -461,9 +461,45 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 shopCategories = cats
                 shopProducts = menu
             } catch (e: Exception) {
-                shopError = e.message ?: "Не удалось загрузить меню"
+                shopError = "Не удалось загрузить меню"
             } finally {
                 shopLoading = false
+            }
+        }
+    }
+
+    /** Загружает характеристики, цены, пакеты и товары для страницы деталей клуба.
+     * Данные привязаны к [clubId] (клуб ещё не выбран), поэтому хранятся отдельно от
+     * seatSpecs/seatPrices/timePackages, которые используются в бронировании.
+     */
+    fun loadClubDetailsExtras(clubId: Long, force: Boolean = false) {
+        if (!force && clubDetailsLoadedForId == clubId) return
+        if (clubDetailsLoading) return
+
+        clubDetailsLoading = true
+        viewModelScope.launch {
+            try {
+                val specsJob = launch {
+                    clubDetailsSpecs = runCatching { seatRepo.seatSpecs(clubId) }.getOrDefault(emptyList())
+                }
+                val pricesJob = launch {
+                    clubDetailsPrices = runCatching { seatPriceApi.getPrices(clubId) }.getOrDefault(emptyList())
+                }
+                val packagesJob = launch {
+                    clubDetailsPackages = runCatching { timePackageApi.getPackages(clubId) }.getOrDefault(emptyList())
+                }
+                val productsJob = launch {
+                    clubDetailsProducts = runCatching {
+                        catalogRepo.clubProducts(clubId).filter { it.isAvailable }
+                    }.getOrDefault(emptyList())
+                }
+                specsJob.join()
+                pricesJob.join()
+                packagesJob.join()
+                productsJob.join()
+                clubDetailsLoadedForId = clubId
+            } finally {
+                clubDetailsLoading = false
             }
         }
     }
@@ -480,6 +516,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // после любой локальной мутации auto-sync не трогает корзину
         if (!force && localCartModified) return
 
+        // фиксируем клуб в момент запроса — selectedClubId может смениться до получения ответа
+        val snapshotClubId = selectedClubId
+
         cartSyncLoading = true
         cartSyncError = null
 
@@ -489,15 +528,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // при force-sync (логин, смена клуба, отмена покупки) сбрасываем флаг
                 // и доверяем серверу; при auto-sync сюда не доходим (заблокировано выше)
                 localCartModified = false
-                applyServerCartProducts(cart)
-                applyServerCartBookings(cart)
-                cartSyncedClubId = selectedClubId
+                applyServerCartProducts(cart, snapshotClubId)
+                applyServerCartBookings(cart, snapshotClubId)
+                cartSyncedClubId = snapshotClubId
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e
             } catch (e: HttpException) {
                 cartSyncError = "Ошибка корзины: ${e.code()}"
             } catch (e: Exception) {
-                cartSyncError = e.message ?: "Ошибка корзины"
+                cartSyncError = "Ошибка корзины"
             } finally {
                 cartSyncLoading = false
             }
@@ -593,7 +632,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             } catch (e: Exception) {
-                seatsError = e.message ?: "Не удалось загрузить места"
+                seatsError = "Не удалось загрузить места"
             } finally {
                 seatsLoading = false
             }
@@ -852,10 +891,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     throw e
                 } catch (e: Exception) {
                     Log.e("Cart", "changeQty server failed: lineId=$lineId qty=$newQty", e)
-                    // откат только для изменения кол-ва, НЕ для удаления
                     if (newQty > 0) {
                         val rollbackIdx = lines.indexOfFirst { it.productId == productId && it.variant == variant }
                         if (rollbackIdx >= 0) lines[rollbackIdx] = cur
+                    } else {
+                        // восстанавливаем удалённый товар при ошибке сервера
+                        val insertAt = idx.coerceIn(0, lines.size)
+                        lines.add(insertAt, cur)
                     }
                 }
             }
@@ -865,20 +907,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Очистить корзину ОДНОГО клуба (по умолчанию — текущего). */
-    fun clearCart(clubId: String = selectedClubId) {
+    fun clearCart(clubId: String = selectedClubId, onError: () -> Unit = {}) {
         val clubIdLong = (clubId.toLongOrNull() ?: clubId.removePrefix("c").toLongOrNull())
         if (user != null && clubIdLong != null) {
             viewModelScope.launch {
                 try {
                     cartRepo.clear(clubIdLong)
-                } catch (_: Exception) {
-                } finally {
+                    // очищаем локальное состояние только после подтверждения сервером
                     cartFor(clubId).productLines.clear()
                     cartFor(clubId).bookingLines.clear()
                     if (clubId == selectedClubId) {
                         bookingDraft = BookingDraft(clubId = selectedClubId)
                         editingBookingId = null
                     }
+                } catch (_: Exception) {
+                    onError()
                 }
             }
             return
@@ -930,18 +973,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
-    fun cancelEditBooking() {
-        editingBookingId = null
-        // оставим текущий черновик как есть — пользователь может продолжить собирать новую бронь
-    }
-
     data class CommitResult(val ok: Boolean, val message: String? = null)
-
-    /**
-     * Добавить текущую выбранную бронь в корзину.
-     * В корзину попадает ТОЛЬКО когда выбраны места (или через быструю бронь).
-     */
-    fun addCurrentBookingToCartAsync(onResult: (CommitResult) -> Unit) = commitCurrentBookingToCartAsync(onResult)
 
     /**
      * Коммит брони в корзину:
@@ -1042,7 +1074,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 onResult(CommitResult(false, msg))
             } catch (e: Exception) {
-                onResult(CommitResult(false, e.message ?: "Не удалось добавить бронь"))
+                onResult(CommitResult(false, "Не удалось добавить бронь"))
             }
         }
     }
@@ -1187,51 +1219,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cartBookingsTotal(clubId: String = selectedClubId): Int =
         cartFor(clubId).bookingLines.sumOf { bookingLineCost(it) }
-
-    // --- Booking setup ---
-    fun setBookingDate(date: LocalDate) {
-        val d = bookingDraft
-        val oldStart = startDateTime(d)
-        val oldEnd = endDateTime(d)
-
-        val newStart = LocalDateTime.of(date, LocalTime.of(oldStart.hour, oldStart.minute))
-        // сдвигаем конец на ту же дельту по времени, чтобы длительность сохранилась
-        val delta = Duration.between(oldStart, newStart)
-        val newEnd = oldEnd.plus(delta)
-
-        bookingDraft = packDraft(d.copy(date = date), newStart, newEnd)
-    }
-
-    /**
-     * Выбор начала как (дата, минуты).
-     * Конец двигается на ту же величину прокрутки, чтобы длительность сохранялась.
-     */
-    fun setStartSelection(date: LocalDate, startMin: Int) {
-        val d = bookingDraft
-        val oldStart = startDateTime(d)
-        val oldEnd = endDateTime(d)
-        val newStart = date.atStartOfDay().plusMinutes(startMin.toLong())
-        val delta = Duration.between(oldStart, newStart)
-        val newEnd = oldEnd.plus(delta)
-
-        bookingDraft = packDraft(d.copy(date = date, startMin = startMin), newStart, newEnd)
-    }
-
-    /**
-     * Выбор конца как (дата, минуты) — никак не влияет на начало.
-     * Но не даём выбрать меньше (начало + 1 час).
-     */
-    fun setEndSelection(endDate: LocalDate, endMin: Int) {
-        val d = bookingDraft
-        val start = startDateTime(d)
-        val picked = endDate.atStartOfDay().plusMinutes(endMin.toLong())
-        val minEnd = start.plusMinutes(MIN_GAP_MIN)
-        val newEnd = if (picked.isBefore(minEnd)) minEnd else picked
-        // ручной выбор конца: пакет сохраняем только если конец строго соответствует пакету
-        val pkg = d.packageHours
-        val keepPkg = pkg != null && Duration.between(start, newEnd).toMinutes().toInt() == pkg * 60
-        bookingDraft = packDraft(d.copy(packageHours = if (keepPkg) pkg else null), start, newEnd)
-    }
 
     /**
      * Применить пакет времени (в часах):
@@ -1384,25 +1371,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 cartFor(selectedClubId).bookingLines.clear()
                 // Немедленная оплата (CREATED → PAID)
                 try { checkoutRepo.payPurchase(resp.purchaseId) } catch (_: Exception) { }
-                // планируем уведомления за 30 мин до каждой брони
-                if (notificationsEnabled) {
-                    try {
-                        val details = checkoutRepo.getPurchaseDetails(resp.purchaseId)
-                        val clubName = clubs.firstOrNull { it.id == details.clubId.toString() }?.name ?: "Клуб"
-                        details.bookingItems.forEach { b ->
-                            NotificationScheduler.scheduleBookingReminder(
-                                context = getApplication(),
-                                bookingId = b.bookingId.toString(),
-                                clubName = clubName,
-                                startAt = LocalDateTime.parse(b.startAt)
-                            )
-                        }
-                    } catch (_: Exception) { }
-                }
                 loadPurchaseHistory()
                 onSuccess(resp.purchaseId)
             } catch (e: Exception) {
-                onError(e.message ?: "Ошибка оплаты")
+                onError("Ошибка оплаты")
             }
         }
     }
@@ -1418,7 +1390,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 purchaseHistory.clear()
                 purchaseHistory.addAll(detailed.map { it.toPurchase(clubs) })
             } catch (e: Exception) {
-                historyError = e.message ?: "Ошибка загрузки истории"
+                historyError = "Ошибка загрузки истории"
             } finally {
                 historyLoading = false
             }
@@ -1432,7 +1404,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadPurchaseHistory()
                 onSuccess()
             } catch (e: Exception) {
-                onError(e.message ?: "Ошибка оплаты")
+                onError("Ошибка оплаты")
             }
         }
     }
@@ -1440,11 +1412,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelPurchase(purchaseId: Long, onSuccess: () -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch {
             try {
-                // отменяем напоминания до запроса на сервер, пока purchase ещё в истории
-                purchaseHistory
-                    .firstOrNull { it.id == purchaseId.toString() }
-                    ?.bookingOrders
-                    ?.forEach { b -> NotificationScheduler.cancelBookingReminder(getApplication(), b.id) }
                 checkoutRepo.cancelPurchase(purchaseId)
                 loadPurchaseHistory()
                 // сразу сбрасываем локальный кэш занятости и корзины — иначе экран мест
@@ -1456,13 +1423,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 syncCartProducts(force = true)
                 onSuccess()
             } catch (e: Exception) {
-                onError(e.message ?: "Ошибка отмены")
+                onError("Ошибка отмены")
             }
         }
     }
 
     private fun PurchaseDetailsDto.toPurchase(clubs: List<Club>): Purchase {
-        val clubName = clubs.firstOrNull { it.id == clubId.toString() }?.name ?: "Клуб"
+        val clubName = clubName.ifBlank { clubs.firstOrNull { it.id == clubId.toString() }?.name ?: "Клуб" }
         val createdAtDt = LocalDateTime.parse(createdAt)
 
         val bookingOrders = bookingItems.map { b ->
@@ -1474,8 +1441,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 endAt = LocalDateTime.parse(b.endAt),
                 seatIds = b.seatIds.map { it.toString() },
                 seatLabels = b.seatLabels,
-                packageHours = null,
-                rateRubPerHour = 200,
+                packageHours = b.packageHours,
+                rateRubPerHour = b.rateRubPerHourSnapshot,
                 totalRub = b.totalRub
             )
         }
@@ -1515,10 +1482,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             paymentStatus = paymentStatus
         )
     }
-
-    // Публичные хелперы для экранов (BookingSetup/BookingSeats)
-    fun setEndMin(endMin: Int) =
-        setEndSelection(bookingDraft.date.plusDays(bookingDraft.endDayOffset.toLong()), endMin)
 
     fun startDateTime(d: BookingDraft): LocalDateTime =
         d.date.plusDays(d.startDayOffset.toLong()).atStartOfDay().plusMinutes(d.startMin.toLong())
@@ -1631,7 +1594,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 reportRepo.submitReport(clubIdLong, message)
                 onSuccess()
             } catch (e: Exception) {
-                onError(e.message ?: "Не удалось отправить сообщение")
+                onError("Не удалось отправить сообщение")
             }
         }
     }
@@ -1808,7 +1771,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 clubs = loaded
                 ensureSelectedClubValid()
             } catch (e: Exception) {
-                clubsError = e.message ?: "Не удалось загрузить клубы"
+                clubsError = "Не удалось загрузить клубы"
             } finally {
                 clubsLoading = false
             }

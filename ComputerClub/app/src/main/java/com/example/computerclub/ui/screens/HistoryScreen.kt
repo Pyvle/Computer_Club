@@ -3,28 +3,43 @@ package com.example.computerclub.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.computerclub.model.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import com.example.computerclub.ui.components.*
+import com.example.computerclub.ui.theme.AppBorder
+import com.example.computerclub.ui.theme.AppSurface
+import com.example.computerclub.ui.theme.BrandIndigo
+import com.example.computerclub.ui.theme.TextSecondary
 import com.example.computerclub.vm.AppViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import kotlinx.coroutines.delay
 
 @Composable
 fun HistoryScreen(appVm: AppViewModel) {
     if (appVm.user == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Войдите, чтобы увидеть историю заказов")
+            AppEmptyState(
+                icon = Icons.Outlined.History,
+                title = "Войдите в аккаунт",
+                subtitle = "Чтобы увидеть историю заказов"
+            )
         }
         return
     }
 
     LaunchedEffect(Unit) { appVm.loadPurchaseHistory() }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     var tab by remember { mutableStateOf(0) }
 
@@ -39,13 +54,11 @@ fun HistoryScreen(appVm: AppViewModel) {
 
     val all = appVm.purchaseHistory
 
-    // активные: есть бронь, которая ещё не началась или идёт прямо сейчас
-    // (purchase без броней — активен, пока заказ товаров не готов)
     val active = remember(all.size, now) {
         all.filter { p ->
             if (p.bookingOrders.isNotEmpty()) {
                 p.bookingOrders.any {
-                    val st = bookingStatus(now, it)
+                    val st = resolveBookingStatus(now, it)
                     st == BookingStatus.UPCOMING || st == BookingStatus.ACTIVE
                 }
             } else {
@@ -54,43 +67,71 @@ fun HistoryScreen(appVm: AppViewModel) {
         }
     }
 
-    val past = remember(all.size, now) {
-        all.filterNot { active.contains(it) }
-    }
+    val past = remember(all.size, now) { all.filterNot { active.contains(it) } }
 
+    Box(Modifier.fillMaxSize()) {
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.TopCenter)
+    )
     Column(
-        Modifier
+        modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        TabRow(selectedTabIndex = tab) {
+        TabRow(
+            selectedTabIndex = tab,
+            containerColor = AppSurface,
+            contentColor = BrandIndigo,
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[tab]),
+                    color = BrandIndigo
+                )
+            }
+        ) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Активные") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Прошедшие") })
         }
 
         if (appVm.historyLoading) {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = BrandIndigo)
             }
         } else {
             val list = if (tab == 0) active else past
 
             if (list.isEmpty()) {
-                Text(if (tab == 0) "Нет активных заказов/броней." else "Пока нет истории.")
+                AppEmptyState(
+                    icon = Icons.Outlined.History,
+                    title = if (tab == 0) "Нет активных заказов" else "История пуста",
+                    subtitle = if (tab == 0) "Забронируйте место или закажите товары" else "Завершённые заказы появятся здесь"
+                )
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(list, key = { it.id }) { purchase ->
-                        PurchaseCard(purchase = purchase, now = now, appVm = appVm)
+                        PurchaseCard(
+                            purchase = purchase,
+                            now = now,
+                            appVm = appVm,
+                            onMessage = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } }
+                        )
                     }
                 }
             }
         }
-    }
+    } // Column
+    } // Box
 }
 
 @Composable
-private fun PurchaseCard(purchase: Purchase, now: LocalDateTime, appVm: AppViewModel) {
+private fun PurchaseCard(
+    purchase: Purchase,
+    now: LocalDateTime,
+    appVm: AppViewModel,
+    onMessage: (String) -> Unit
+) {
     var showCancelDialog by remember { mutableStateOf(false) }
 
     if (showCancelDialog) {
@@ -101,8 +142,12 @@ private fun PurchaseCard(purchase: Purchase, now: LocalDateTime, appVm: AppViewM
             confirmButton = {
                 TextButton(onClick = {
                     showCancelDialog = false
-                    appVm.cancelPurchase(purchase.id.toLong(), {}, {})
-                }) { Text("Отменить заказ") }
+                    appVm.cancelPurchase(
+                        purchase.id.toLong(),
+                        onSuccess = { onMessage("Заказ отменён") },
+                        onError = { onMessage("Не удалось отменить заказ") }
+                    )
+                }) { Text("Отменить заказ", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = { showCancelDialog = false }) { Text("Назад") }
@@ -110,107 +155,150 @@ private fun PurchaseCard(purchase: Purchase, now: LocalDateTime, appVm: AppViewM
         )
     }
 
-    Card {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(purchase.clubName, style = MaterialTheme.typography.titleMedium)
+    AppCard {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    formatDt(purchase.createdAt),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = purchase.clubName,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
                 )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AppStatusChip(
+                        label = purchase.paymentStatus.toPaymentLabel(),
+                        tone = purchase.paymentStatus.toPaymentChipTone()
+                    )
+                    Text(
+                        text = formatDt(purchase.createdAt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
+                }
             }
 
             if (purchase.bookingOrders.isNotEmpty()) {
-                Text("Бронирования", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "Бронирования",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = TextSecondary
+                )
                 purchase.bookingOrders.forEach { b ->
-                    val st = bookingStatus(now, b)
-                    Text(
-                        "• ${formatDt(b.startAt)} — ${formatDt(b.endAt)} • ${stLabel(st)} • места: ${b.seatLabels.joinToString()}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    val st = resolveBookingStatus(now, b)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = "${formatDt(b.startAt)} — ${formatDt(b.endAt)}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                text = "Места: ${b.seatLabels.joinToString()}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                        AppStatusChip(label = st.toLabel(), tone = st.toChipTone())
+                    }
                 }
                 Text(
-                    "Итого бронирования: ${purchase.bookingTotalRub} ₽",
+                    text = "Итого бронирования: ${purchase.bookingTotalRub} ₽",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = TextSecondary
                 )
             }
 
             purchase.productOrder?.let { po ->
-                Divider()
-                Text("Заказ", fontWeight = FontWeight.SemiBold)
+                HorizontalDivider(color = AppBorder)
                 Text(
-                    "Статус: ${orderStatusLabel(po.status)} • готовность: ${po.readyBy?.let { formatDt(it) } ?: "ASAP"} (${readyPolicyLabel(po.readyByPolicy)})",
-                    style = MaterialTheme.typography.bodySmall
+                    text = "Заказ",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = TextSecondary
                 )
                 po.items.take(5).forEach { i ->
                     val v = i.variant?.let { " ($it)" } ?: ""
-                    Text("• ${i.title}$v × ${i.qty}", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        text = "• ${i.title}$v × ${i.qty}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
                 if (po.items.size > 5) {
-                    Text("…ещё ${po.items.size - 5}", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        text = "…ещё ${po.items.size - 5}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
                 }
                 Text(
-                    "Итого товары: ${purchase.productsTotalRub} ₽",
+                    text = "Итого товары: ${purchase.productsTotalRub} ₽",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = TextSecondary
                 )
             }
 
-            Divider()
-            Text("Итого: ${purchase.totalRub} ₽", style = MaterialTheme.typography.titleMedium)
+            HorizontalDivider(color = AppBorder)
 
-            val canCancel = purchase.paymentStatus != "CANCELED" &&
-                purchase.bookingOrders.any { bookingStatus(now, it) == BookingStatus.UPCOMING }
-
-            if (purchase.paymentStatus == "CREATED") {
-                Button(
-                    onClick = { appVm.payPurchase(purchase.id.toLong(), {}, {}) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Оплатить")
-                }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Итого: ${purchase.totalRub} ₽",
+                    style = MaterialTheme.typography.titleMedium
+                )
             }
 
+            if (purchase.paymentStatus == "CREATED") {
+                AppPrimaryButton(
+                    text = "Оплатить",
+                    onClick = {
+                        appVm.payPurchase(
+                            purchase.id.toLong(),
+                            onSuccess = { onMessage("Заказ оплачен") },
+                            onError = { onMessage("Не удалось оплатить заказ") }
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            val canCancel = purchase.paymentStatus != "CANCELED" &&
+                purchase.bookingOrders.any { resolveBookingStatus(now, it) == BookingStatus.UPCOMING }
+
             if (canCancel) {
-                OutlinedButton(
+                AppSecondaryButton(
+                    text = "Отменить бронь",
                     onClick = { showCancelDialog = true },
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Отменить бронь")
-                }
+                )
             }
         }
     }
 }
 
-private fun bookingStatus(now: LocalDateTime, b: BookingOrder): BookingStatus {
+private fun resolveBookingStatus(now: LocalDateTime, b: BookingOrder): BookingStatus {
     if (b.status == BookingStatus.CANCELED) return BookingStatus.CANCELED
     return when {
         now.isBefore(b.startAt) -> BookingStatus.UPCOMING
         now.isAfter(b.endAt) -> BookingStatus.DONE
         else -> BookingStatus.ACTIVE
     }
-}
-
-private fun stLabel(st: BookingStatus): String = when (st) {
-    BookingStatus.UPCOMING -> "будущая"
-    BookingStatus.ACTIVE -> "действует"
-    BookingStatus.DONE -> "прошла"
-    BookingStatus.CANCELED -> "отменена"
-}
-
-private fun orderStatusLabel(st: ProductOrderStatus): String = when (st) {
-    ProductOrderStatus.NOT_READY -> "не готов"
-    ProductOrderStatus.READY -> "готов"
-    ProductOrderStatus.CANCELED -> "отменён"
-}
-
-private fun readyPolicyLabel(p: ReadyByPolicy): String = when (p) {
-    ReadyByPolicy.ASAP -> "как можно скорее"
-    ReadyByPolicy.BOOKING_START -> "к началу брони"
-    ReadyByPolicy.CUSTOM -> "выбрано пользователем"
 }
 
 private val dtFmt = DateTimeFormatter.ofPattern("dd.MM HH:mm")

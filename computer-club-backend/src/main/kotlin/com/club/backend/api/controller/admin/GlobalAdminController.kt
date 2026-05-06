@@ -1,12 +1,7 @@
 package com.club.backend.api.controller.admin
 
-import com.club.backend.api.dto.admin.AdminUserResponse
-import com.club.backend.api.dto.admin.BlockClubRequest
-import com.club.backend.api.dto.admin.ClubWarningRequest
-import com.club.backend.api.dto.admin.ClubWarningResponse
-import com.club.backend.api.dto.admin.CreateUserRequest
-import com.club.backend.api.dto.admin.GlobalClubResponse
-import com.club.backend.api.dto.admin.SetActiveRequest
+import com.club.backend.api.dto.admin.*
+import com.club.backend.api.dto.admin.AdminPurchaseDetailResponse
 import com.club.backend.service.GlobalAdminService
 import com.club.backend.service.GlobalClubAdminService
 import com.club.backend.service.SetGlobalRoleRequest
@@ -33,6 +28,11 @@ class GlobalAdminController(
     @PreAuthorize("hasRole('GLOBAL_ADMIN')")
     fun listUsers(): List<AdminUserResponse> = globalAdminService.listUsers()
 
+    @GetMapping("/users/{userId}")
+    @PreAuthorize("hasRole('GLOBAL_ADMIN')")
+    fun getUserDetails(@PathVariable userId: Long): AdminUserDetailsResponse =
+        globalAdminService.getUserDetails(userId)
+
     @PostMapping("/users")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('GLOBAL_ADMIN')")
@@ -52,6 +52,26 @@ class GlobalAdminController(
         globalAdminService.deleteUser(userId, currentUserId())
     }
 
+    @GetMapping("/users/{userId}/bookings")
+    @PreAuthorize("hasRole('GLOBAL_ADMIN')")
+    fun getUserBookings(@PathVariable userId: Long): List<GlobalAdminUserBookingItem> =
+        globalAdminService.getUserAllBookings(userId)
+
+    @GetMapping("/users/{userId}/purchases")
+    @PreAuthorize("hasRole('GLOBAL_ADMIN')")
+    fun getUserPurchases(@PathVariable userId: Long): List<GlobalAdminUserPurchaseItem> =
+        globalAdminService.getUserAllPurchases(userId)
+
+    @GetMapping("/users/{userId}/reports")
+    @PreAuthorize("hasRole('GLOBAL_ADMIN')")
+    fun getUserReports(@PathVariable userId: Long): List<GlobalAdminUserReportItem> =
+        globalAdminService.getUserAllReports(userId)
+
+    @GetMapping("/purchases/{purchaseId}")
+    @PreAuthorize("hasRole('GLOBAL_ADMIN')")
+    fun getPurchaseDetail(@PathVariable purchaseId: Long): AdminPurchaseDetailResponse =
+        globalAdminService.getPurchaseDetail(purchaseId)
+
     @PutMapping("/users/{userId}/global-role")
     @PreAuthorize("hasRole('GLOBAL_ADMIN')")
     fun setGlobalRole(@PathVariable userId: Long, @RequestBody req: SetGlobalRoleRequest) {
@@ -69,6 +89,11 @@ class GlobalAdminController(
     @GetMapping("/clubs")
     @PreAuthorize("hasRole('GLOBAL_ADMIN')")
     fun listClubs(): List<GlobalClubResponse> = globalClubAdminService.listAll()
+
+    @GetMapping("/clubs/{clubId}")
+    @PreAuthorize("hasRole('GLOBAL_ADMIN')")
+    fun getClubDetails(@PathVariable clubId: Long): GlobalClubDetailsResponse =
+        globalClubAdminService.getDetails(clubId)
 
     @PutMapping("/clubs/{clubId}/block")
     @PreAuthorize("hasRole('GLOBAL_ADMIN')")

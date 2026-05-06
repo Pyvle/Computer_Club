@@ -1,100 +1,220 @@
-import { useEffect, useState } from 'react'
+import { CSSProperties, ReactNode, useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Button, Card, Col, Row, Spin, Statistic, Table, Tag } from 'antd'
+import { Alert, Button, Col, Row, Spin, Table } from 'antd'
+import {
+  CalendarOutlined,
+  ClockCircleOutlined,
+  EnvironmentOutlined,
+  RiseOutlined,
+  BarChartOutlined,
+  LayoutOutlined,
+  MessageOutlined,
+  ExclamationCircleOutlined,
+  ShoppingCartOutlined,
+} from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import apiClient from '../../utils/apiClient'
+import { BOOKING_STATUS, PAYMENT_STATUS } from '../../utils/statusMaps'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
+import StatusBadge from '../../components/ui/StatusBadge'
+import { tokens } from '../../theme/tokens'
 import type {
+  AdminPurchaseResponse,
   BookingStatus,
   ClubDashboardResponse,
+  ClubUserReportResponse,
   DashboardBookingPreview,
   DashboardPurchasePreview,
   PaymentStatus,
 } from '../../types'
 
-// --- Статусы броней ---
+// --- KpiCard ---
 
-const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
-  UPCOMING: 'Предстоящее',
-  ACTIVE: 'Активное',
-  DONE: 'Завершено',
-  CANCELED: 'Отменено',
+interface KpiCardProps {
+  value: ReactNode
+  label: string
+  hint?: string
+  icon: ReactNode
+  accentColor: string
+  onClick?: () => void
+  style?: CSSProperties
 }
 
-const BOOKING_STATUS_COLORS: Record<BookingStatus, string> = {
-  UPCOMING: 'blue',
-  ACTIVE: 'success',
-  DONE: 'default',
-  CANCELED: 'error',
+function KpiCard({ value, label, hint, icon, accentColor, onClick, style }: KpiCardProps) {
+  const softBg =
+    accentColor === tokens.colors.success  ? tokens.colors.successSoft  :
+    accentColor === tokens.colors.warning  ? tokens.colors.warningSoft  :
+    accentColor === tokens.colors.error    ? tokens.colors.errorSoft    :
+    accentColor === tokens.colors.info     ? tokens.colors.infoSoft     :
+    tokens.colors.primarySoft
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: tokens.colors.surface,
+        border: `1px solid ${tokens.colors.border}`,
+        borderLeft: `4px solid ${accentColor}`,
+        borderRadius: tokens.radius.lg,
+        boxShadow: tokens.shadow.card,
+        padding: '20px 24px',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'box-shadow 0.18s',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        ...style,
+      }}
+      onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLDivElement).style.boxShadow = tokens.shadow.hover }}
+      onMouseLeave={e => { if (onClick) (e.currentTarget as HTMLDivElement).style.boxShadow = tokens.shadow.card }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 36, fontWeight: 700, color: tokens.colors.text, lineHeight: 1, marginBottom: 6 }}>
+            {value}
+          </div>
+          <div style={{ fontSize: 14, color: tokens.colors.textSecondary, fontWeight: 500 }}>
+            {label}
+          </div>
+          {hint && (
+            <div style={{ fontSize: 11, color: tokens.colors.textMuted, marginTop: 4 }}>
+              {hint}
+            </div>
+          )}
+        </div>
+        <div
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: tokens.radius.md,
+            background: softBg,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: accentColor,
+            fontSize: 22,
+            flexShrink: 0,
+          }}
+        >
+          {icon}
+        </div>
+      </div>
+    </div>
+  )
 }
 
-// --- Статусы покупок ---
+// --- AlertKpiCard (для тревожных метрик) ---
 
-const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
-  CREATED: 'Ожидает',
-  PAID: 'Оплачено',
-  FAILED: 'Ошибка',
-  CANCELED: 'Отменено',
-  REFUND: 'Возврат',
+interface AlertCardProps {
+  // undefined = загружается, null = ошибка загрузки, number = значение
+  count: number | null | undefined
+  label: string
+  hint: string
+  icon: ReactNode
+  accentColor: string
+  onClick: () => void
 }
 
-const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
-  CREATED: 'blue',
-  PAID: 'success',
-  FAILED: 'error',
-  CANCELED: 'default',
-  REFUND: 'warning',
+function AlertKpiCard({ count, label, hint, icon, accentColor, onClick }: AlertCardProps) {
+  const isZero = count === 0
+  const color = isZero ? tokens.colors.success : accentColor
+  const display = count === undefined
+    ? <Spin size="small" />
+    : count === null
+      ? <span style={{ color: tokens.colors.textMuted }}>—</span>
+      : count
+
+  return (
+    <KpiCard
+      value={display}
+      label={label}
+      hint={hint}
+      icon={icon}
+      accentColor={color}
+      onClick={onClick}
+    />
+  )
 }
 
 // --- Колонки таблиц ---
 
-function bookingColumns(
-  navigate: (path: string) => void,
-  clubId: string
-): ColumnsType<DashboardBookingPreview> {
+function bookingColumns(navigate: (p: string) => void, clubId: string): ColumnsType<DashboardBookingPreview> {
   return [
-    { title: '№', dataIndex: 'id', key: 'id', width: 60,
-      render: (id: number) => (
-        <Button type="link" size="small" onClick={() => navigate(`/admin/club/${clubId}/bookings/${id}`)}>
-          #{id}
-        </Button>
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      width: 130,
+      render: (s: BookingStatus) => {
+        const { label, variant } = BOOKING_STATUS[s] ?? { label: s, variant: 'default' as const }
+        return <StatusBadge label={label} variant={variant} />
+      },
+    },
+    {
+      title: 'Пользователь',
+      dataIndex: 'userPhone',
+      render: (p: string | null) => p ?? <span style={{ color: tokens.colors.textMuted }}>—</span>,
+    },
+    {
+      title: 'Время',
+      key: 'time',
+      render: (_, r) => (
+        <span style={{ fontSize: 13 }}>
+          {dayjs(r.startAt).format('HH:mm')}
+          <span style={{ color: tokens.colors.textMuted }}> — </span>
+          {dayjs(r.endAt).format('HH:mm')}
+          <span style={{ color: tokens.colors.textMuted, fontSize: 11, marginLeft: 4 }}>
+            {dayjs(r.startAt).format('DD.MM')}
+          </span>
+        </span>
       ),
     },
-    { title: 'Пользователь', dataIndex: 'userPhone', key: 'userPhone',
-      render: (p: string | null) => p ?? '—',
-    },
-    { title: 'Начало', dataIndex: 'startAt', key: 'startAt',
-      render: (v: string) => dayjs(v).format('DD.MM HH:mm'),
-    },
-    { title: 'Статус', dataIndex: 'status', key: 'status',
-      render: (s: BookingStatus) => (
-        <Tag color={BOOKING_STATUS_COLORS[s]}>{BOOKING_STATUS_LABELS[s]}</Tag>
+    {
+      title: '№',
+      dataIndex: 'id',
+      width: 60,
+      render: (id: number) => (
+        <Button type="link" size="small" style={{ padding: 0 }} onClick={() => navigate(`/admin/club/${clubId}/bookings/${id}`)}>
+          #{id}
+        </Button>
       ),
     },
   ]
 }
 
-function purchaseColumns(
-  navigate: (path: string) => void,
-  clubId: string
-): ColumnsType<DashboardPurchasePreview> {
+function purchaseColumns(navigate: (p: string) => void, clubId: string): ColumnsType<DashboardPurchasePreview> {
   return [
-    { title: '№', dataIndex: 'id', key: 'id', width: 60,
-      render: (id: number) => (
-        <Button type="link" size="small" onClick={() => navigate(`/admin/club/${clubId}/purchases/${id}`)}>
-          #{id}
-        </Button>
+    {
+      title: 'Статус',
+      dataIndex: 'paymentStatus',
+      width: 120,
+      render: (s: PaymentStatus) => {
+        const { label, variant } = PAYMENT_STATUS[s] ?? { label: s, variant: 'default' as const }
+        return <StatusBadge label={label} variant={variant} />
+      },
+    },
+    {
+      title: 'Пользователь',
+      dataIndex: 'userPhone',
+      render: (p: string | null) => p ?? <span style={{ color: tokens.colors.textMuted }}>—</span>,
+    },
+    {
+      title: 'Сумма',
+      dataIndex: 'totalRub',
+      width: 110,
+      render: (v: number) => (
+        <span style={{ fontWeight: 600 }}>{v.toLocaleString('ru-RU')} ₽</span>
       ),
     },
-    { title: 'Пользователь', dataIndex: 'userPhone', key: 'userPhone',
-      render: (p: string | null) => p ?? '—',
-    },
-    { title: 'Сумма', dataIndex: 'totalRub', key: 'totalRub',
-      render: (v: number) => `${v.toLocaleString('ru-RU')} ₽`,
-    },
-    { title: 'Статус', dataIndex: 'paymentStatus', key: 'paymentStatus',
-      render: (s: PaymentStatus) => (
-        <Tag color={PAYMENT_STATUS_COLORS[s]}>{PAYMENT_STATUS_LABELS[s]}</Tag>
+    {
+      title: '№',
+      dataIndex: 'id',
+      width: 60,
+      render: (id: number) => (
+        <Button type="link" size="small" style={{ padding: 0 }} onClick={() => navigate(`/admin/club/${clubId}/purchases/${id}`)}>
+          #{id}
+        </Button>
       ),
     },
   ]
@@ -105,110 +225,177 @@ function purchaseColumns(
 export default function ClubDashboardPage() {
   const { clubId } = useParams<{ clubId: string }>()
   const navigate = useNavigate()
+
   const [data, setData] = useState<ClubDashboardResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [pendingCount, setPendingCount] = useState<number | null | undefined>(undefined)
+  const [reportsCount, setReportsCount] = useState<number | null | undefined>(undefined)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!clubId) return
     setLoading(true)
+    setError(false)
+    setPendingCount(undefined)
+    setReportsCount(undefined)
+
+    // основные данные дашборда
     apiClient
       .get<ClubDashboardResponse>(`/admin/clubs/${clubId}/dashboard`)
-      .then((r) => setData(r.data))
+      .then(r => setData(r.data))
+      .catch(() => setError(true))
       .finally(() => setLoading(false))
+
+    // дополнительные счётчики — параллельно, не блокируют рендер
+    apiClient
+      .get<AdminPurchaseResponse[]>(`/admin/clubs/${clubId}/purchases`, { params: { paymentStatus: 'CREATED' } })
+      .then(r => setPendingCount(r.data.length))
+      .catch(() => setPendingCount(null))
+
+    apiClient
+      .get<ClubUserReportResponse[]>(`/admin/clubs/${clubId}/user-reports`)
+      .then(r => setReportsCount(r.data.length))
+      .catch(() => setReportsCount(null))
   }, [clubId])
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300 }}>
-        <Spin size="large" />
-      </div>
-    )
-  }
+  useEffect(() => { load() }, [load])
 
-  if (!data || !clubId) return null
+  if (loading) return <Spin style={{ display: 'block', margin: '48px auto' }} />
+  if (error || !data || !clubId) return (
+    <Alert
+      type="error"
+      message="Не удалось загрузить дашборд"
+      description="Проверьте соединение с сервером."
+      action={<Button size="small" onClick={load}>Повторить</Button>}
+      style={{ maxWidth: 480 }}
+    />
+  )
+
+  const occupancyPct = data.totalSeats > 0 ? Math.round(data.occupiedSeats / data.totalSeats * 100) : 0
+  const occupancyColor =
+    occupancyPct >= 80 ? tokens.colors.error :
+    occupancyPct >= 50 ? tokens.colors.warning :
+    tokens.colors.success
 
   return (
     <div>
-      <h2 style={{ marginTop: 0, marginBottom: 20 }}>Дашборд</h2>
+      <PageHeader title="Дашборд" subtitle="Текущее состояние клуба" />
 
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="Активных броней"
-              value={data.activeBookingsCount}
-              valueStyle={{ color: '#1677ff' }}
-            />
-          </Card>
+      {/* --- Основные KPI --- */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={12} xl={6}>
+          <KpiCard
+            value={data.activeBookingsCount}
+            label="Активных броней"
+            hint="прямо сейчас"
+            icon={<CalendarOutlined />}
+            accentColor={data.activeBookingsCount > 0 ? tokens.colors.success : tokens.colors.textMuted}
+            onClick={() => navigate(`/admin/club/${clubId}/bookings`)}
+          />
         </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="Предстоящих сегодня"
-              value={data.upcomingTodayCount}
-              valueStyle={{ color: '#1677ff' }}
-            />
-          </Card>
+        <Col xs={24} sm={12} xl={6}>
+          <KpiCard
+            value={`${data.occupiedSeats} / ${data.totalSeats}`}
+            label="Занято мест"
+            hint={`${occupancyPct}% заполнено`}
+            icon={<EnvironmentOutlined />}
+            accentColor={occupancyColor}
+            onClick={() => navigate(`/admin/club/${clubId}/bookings`)}
+          />
         </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="Занято мест"
-              value={data.occupiedSeats}
-              suffix={`/ ${data.totalSeats}`}
-            />
-          </Card>
+        <Col xs={24} sm={12} xl={6}>
+          <KpiCard
+            value={data.upcomingTodayCount}
+            label="Предстоящих сегодня"
+            hint="запланированных броней"
+            icon={<ClockCircleOutlined />}
+            accentColor={tokens.colors.info}
+          />
         </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="Выручка сегодня"
-              value={data.todayRevenueRub}
-              suffix="₽"
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
+        <Col xs={24} sm={12} xl={6}>
+          <KpiCard
+            value={`${data.todayRevenueRub.toLocaleString('ru-RU')} ₽`}
+            label="Выручка сегодня"
+            hint="оплаченные заказы"
+            icon={<RiseOutlined />}
+            accentColor={tokens.colors.success}
+          />
         </Col>
       </Row>
 
-      {(data.weekRevenueRub !== null || data.monthRevenueRub !== null) && (
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          {data.weekRevenueRub !== null && (
-            <Col span={6}>
-              <Card>
-                <Statistic
-                  title="Выручка за 7 дней"
-                  value={data.weekRevenueRub}
-                  suffix="₽"
-                  valueStyle={{ color: '#52c41a' }}
-                />
-              </Card>
-            </Col>
-          )}
-          {data.monthRevenueRub !== null && (
-            <Col span={6}>
-              <Card>
-                <Statistic
-                  title="Выручка за 30 дней"
-                  value={data.monthRevenueRub}
-                  suffix="₽"
-                  valueStyle={{ color: '#52c41a' }}
-                />
-              </Card>
-            </Col>
-          )}
-        </Row>
-      )}
+      {/* --- Внимание + расширенная выручка --- */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={12} lg={8}>
+          <AlertKpiCard
+            count={pendingCount}
+            label="Ожидают оплаты"
+            hint="незакрытые заказы"
+            icon={<ShoppingCartOutlined />}
+            accentColor={tokens.colors.warning}
+            onClick={() => navigate(`/admin/club/${clubId}/purchases`)}
+          />
+        </Col>
+        <Col xs={24} sm={12} lg={8}>
+          <AlertKpiCard
+            count={reportsCount}
+            label="Жалобы пользователей"
+            hint="нерассмотренные"
+            icon={<ExclamationCircleOutlined />}
+            accentColor={tokens.colors.error}
+            onClick={() => navigate(`/admin/club/${clubId}/messages`)}
+          />
+        </Col>
+        {data.weekRevenueRub !== null && (
+          <Col xs={24} sm={12} lg={8}>
+            <KpiCard
+              value={`${data.weekRevenueRub.toLocaleString('ru-RU')} ₽`}
+              label="Выручка за 7 дней"
+              hint={data.monthRevenueRub !== null ? `за месяц: ${data.monthRevenueRub.toLocaleString('ru-RU')} ₽` : undefined}
+              icon={<BarChartOutlined />}
+              accentColor={tokens.colors.primary}
+            />
+          </Col>
+        )}
+      </Row>
 
+      {/* --- Быстрые действия --- */}
+      <SectionCard style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: tokens.colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 4 }}>
+            Быстрые действия
+          </span>
+          <Button
+            icon={<LayoutOutlined />}
+            onClick={() => navigate(`/admin/club/${clubId}/bookings`)}
+          >
+            Схема зала
+          </Button>
+          <Button
+            icon={<CalendarOutlined />}
+            onClick={() => navigate(`/admin/club/${clubId}/bookings`)}
+          >
+            Активные брони
+          </Button>
+          <Button
+            icon={<MessageOutlined />}
+            onClick={() => navigate(`/admin/club/${clubId}/messages`)}
+          >
+            Сообщения
+          </Button>
+        </div>
+      </SectionCard>
+
+      {/* --- Последние операции --- */}
       <Row gutter={[16, 16]}>
-        <Col span={14}>
-          <Card
+        <Col xs={24} lg={14}>
+          <SectionCard
             title="Последние бронирования"
             extra={
-              <Button type="link" onClick={() => navigate(`/admin/club/${clubId}/bookings`)}>
-                Все бронирования →
+              <Button type="link" size="small" onClick={() => navigate(`/admin/club/${clubId}/bookings`)}>
+                Все →
               </Button>
             }
+            noPadding
           >
             <Table
               dataSource={data.recentBookings}
@@ -216,17 +403,22 @@ export default function ClubDashboardPage() {
               rowKey="id"
               pagination={false}
               size="small"
+              rowClassName={(r: DashboardBookingPreview) =>
+                r.status === 'ACTIVE' ? 'dashboard-row-active' :
+                r.status === 'CANCELED' ? 'dashboard-row-canceled' : ''
+              }
             />
-          </Card>
+          </SectionCard>
         </Col>
-        <Col span={10}>
-          <Card
+        <Col xs={24} lg={10}>
+          <SectionCard
             title="Последние покупки"
             extra={
-              <Button type="link" onClick={() => navigate(`/admin/club/${clubId}/purchases`)}>
-                Все покупки →
+              <Button type="link" size="small" onClick={() => navigate(`/admin/club/${clubId}/purchases`)}>
+                Все →
               </Button>
             }
+            noPadding
           >
             <Table
               dataSource={data.recentPurchases}
@@ -234,8 +426,12 @@ export default function ClubDashboardPage() {
               rowKey="id"
               pagination={false}
               size="small"
+              rowClassName={(r: DashboardPurchasePreview) =>
+                r.paymentStatus === 'CREATED' ? 'dashboard-row-pending' :
+                r.paymentStatus === 'FAILED'  ? 'dashboard-row-canceled' : ''
+              }
             />
-          </Card>
+          </SectionCard>
         </Col>
       </Row>
     </div>

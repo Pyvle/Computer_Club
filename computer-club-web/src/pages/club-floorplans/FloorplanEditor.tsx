@@ -100,6 +100,9 @@ function parseItems(raw: unknown, width: number, height: number, gridSize: numbe
 // --- Component ---
 
 const MIN_CELL_PX = 36
+const MIN_ZOOM = 0.35
+const MAX_ZOOM = 8
+const ZOOM_STEP = 0.25
 type Tool = 'room' | 'seat' | 'wall' | 'erase'
 
 interface SelectionRect {
@@ -116,13 +119,23 @@ interface Props {
   onChange: (data: FloorplanData) => void
 }
 
+function clampZoom(value: number) {
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Number.isFinite(value) ? value : 1))
+}
+
+function formatZoomLabel(value: number) {
+  return `${Math.round(value * 100)}%`
+}
+
 export default function FloorplanEditor({ floorplan, seats, readOnly, onChange }: Props) {
   const { width, height, gridSize } = floorplan
   const cols = Math.max(1, Math.floor(width / gridSize))
   const rows = Math.max(1, Math.floor(height / gridSize))
 
-  const defaultZoom = Math.max(1, Math.ceil(MIN_CELL_PX / gridSize))
-  const [zoom, setZoom] = useState(defaultZoom)
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+  const [fitZoom, setFitZoom] = useState(1)
+  const [autoFit, setAutoFit] = useState(true)
+  const [zoom, setZoom] = useState(1)
   const cellPx = gridSize * zoom
 
   const [items, setItems] = useState<FloorplanItem[]>(() =>
@@ -141,6 +154,34 @@ export default function FloorplanEditor({ floorplan, seats, readOnly, onChange }
   const [dragCurrent, setDragCurrent] = useState<{ col: number; row: number } | null>(null)
   const [activeCell, setActiveCell] = useState<{ col: number; row: number } | null>(null)
   const [pickSeatId, setPickSeatId] = useState<number | null>(null)
+
+  useEffect(() => {
+    setAutoFit(true)
+  }, [floorplan.id, floorplan.version, cols, rows, gridSize])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+
+    const updateFitZoom = () => {
+      const availableWidth = Math.max(160, viewport.clientWidth - PADDING * 2)
+      const availableHeight = Math.max(160, viewport.clientHeight - PADDING * 2)
+      const fitByWidth = (availableWidth - Math.max(0, (cols - 1) * GAP)) / Math.max(1, cols * gridSize)
+      const fitByHeight = (availableHeight - Math.max(0, (rows - 1) * GAP)) / Math.max(1, rows * gridSize)
+      const preferredZoom = Math.max(1, MIN_CELL_PX / gridSize)
+      const nextFitZoom = clampZoom(Math.min(preferredZoom, fitByWidth, fitByHeight))
+
+      setFitZoom(nextFitZoom)
+      if (autoFit) {
+        setZoom(nextFitZoom)
+      }
+    }
+
+    updateFitZoom()
+    const observer = new ResizeObserver(updateFitZoom)
+    observer.observe(viewport)
+    return () => observer.disconnect()
+  }, [autoFit, cols, rows, gridSize])
 
   // пиксельная позиция левого/верхнего края ячейки (внутри wrapper с padding)
   const cellLeft = (c: number) => PADDING + c * (cellPx + GAP)
@@ -465,8 +506,11 @@ export default function FloorplanEditor({ floorplan, seats, readOnly, onChange }
             <Button
               size="small"
               icon={<ZoomOutOutlined />}
-              onClick={() => setZoom((z) => Math.max(1, z - 1))}
-              disabled={zoom <= 1}
+              onClick={() => {
+                setAutoFit(false)
+                setZoom((z) => clampZoom(z - ZOOM_STEP))
+              }}
+              disabled={zoom <= MIN_ZOOM}
             />
           </Tooltip>
           <span
@@ -478,22 +522,28 @@ export default function FloorplanEditor({ floorplan, seats, readOnly, onChange }
               userSelect: 'none',
             }}
           >
-            {zoom === 1 ? '1:1' : `×${zoom}`}
+            {formatZoomLabel(zoom)}
           </span>
           <Tooltip title="Увеличить">
             <Button
               size="small"
               icon={<ZoomInOutlined />}
-              onClick={() => setZoom((z) => Math.min(8, z + 1))}
-              disabled={zoom >= 8}
+              onClick={() => {
+                setAutoFit(false)
+                setZoom((z) => clampZoom(z + ZOOM_STEP))
+              }}
+              disabled={zoom >= MAX_ZOOM}
             />
           </Tooltip>
-          {zoom !== defaultZoom && (
-            <Tooltip title="По умолчанию">
+          {Math.abs(zoom - fitZoom) > 0.001 && (
+            <Tooltip title="Показать схему целиком">
               <Button
                 size="small"
                 icon={<CompressOutlined />}
-                onClick={() => setZoom(defaultZoom)}
+                onClick={() => {
+                  setAutoFit(true)
+                  setZoom(fitZoom)
+                }}
               />
             </Tooltip>
           )}
@@ -537,6 +587,7 @@ export default function FloorplanEditor({ floorplan, seats, readOnly, onChange }
 
       {/* Scrollable grid */}
       <div
+        ref={viewportRef}
         style={{
           overflowX: 'auto',
           overflowY: 'auto',

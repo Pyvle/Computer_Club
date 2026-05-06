@@ -9,7 +9,7 @@ export default function PublicLayout() {
     <Layout style={{ minHeight: '100vh' }}>
       <Header style={{ display: 'flex', alignItems: 'center', background: '#001529' }}>
         <Title level={4} style={{ color: '#fff', margin: 0 }}>
-          Computer Club
+          Компьютерный клуб
         </Title>
       </Header>
       <Content>

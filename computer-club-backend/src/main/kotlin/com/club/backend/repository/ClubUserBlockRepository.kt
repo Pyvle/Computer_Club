@@ -41,4 +41,26 @@ interface ClubUserBlockRepository : JpaRepository<ClubUserBlockEntity, ClubUserB
         @Param("userId") userId: Long,
         @Param("now") now: LocalDateTime
     ): List<ClubUserBlockEntity>
+
+    @Query("""
+        select b from ClubUserBlockEntity b
+        join fetch b.club
+        where b.user.id = :userId
+          and b.isBlocked = true
+          and (b.blockedUntil is null or b.blockedUntil > :now)
+    """)
+    fun findActiveBlocksForUserFetch(
+        @Param("userId") userId: Long,
+        @Param("now") now: LocalDateTime
+    ): List<ClubUserBlockEntity>
+
+    @Query("""
+        select b from ClubUserBlockEntity b
+        left join fetch b.blockedBy
+        where b.id.clubId = :clubId and b.id.userId = :userId
+    """)
+    fun findByClubIdAndUserIdFetch(
+        @Param("clubId") clubId: Long,
+        @Param("userId") userId: Long
+    ): ClubUserBlockEntity?
 }

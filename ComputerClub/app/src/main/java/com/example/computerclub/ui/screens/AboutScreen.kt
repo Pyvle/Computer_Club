@@ -7,70 +7,93 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.computerclub.ui.components.AppCard
+import com.example.computerclub.ui.components.AppScreenContainer
+import com.example.computerclub.ui.theme.AppBorder
+import com.example.computerclub.ui.theme.BrandIndigo
+import com.example.computerclub.ui.theme.TextSecondary
 
 @Composable
 fun AboutScreen() {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text("О приложении", style = MaterialTheme.typography.headlineSmall)
-
-        Card {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                InfoRow("Название", "Computer Club")
-                InfoRow("Версия", "1.0.0")
-                InfoRow("Платформа", "Android")
+    AppScreenContainer {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            AppCard {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    InfoRow("Название", "Приложение управления компьютерным клубом")
+                    HorizontalDivider(color = AppBorder)
+                    InfoRow("Версия", "1.0.0")
+                    HorizontalDivider(color = AppBorder)
+                    InfoRow("Платформа", "Android")
+                }
             }
-        }
 
-        Card {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Описание", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Приложение для бронирования мест в компьютерных клубах. " +
-                    "Позволяет выбрать клуб, забронировать место на удобное время, " +
-                    "заказать товары и услуги, а также отслеживать историю своих заказов.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
+            AppCard {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("Описание", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = "Приложение для бронирования мест в компьютерных клубах. " +
+                               "Позволяет выбрать клуб, забронировать место на удобное время, " +
+                               "заказать товары и услуги, а также отслеживать историю своих заказов.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                }
             }
-        }
 
-        Card {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Возможности", style = MaterialTheme.typography.titleMedium)
-                FeatureItem("Бронирование мест по схеме зала")
-                FeatureItem("Заказ еды и напитков")
-                FeatureItem("История заказов и бронирований")
-                FeatureItem("Уведомления перед началом брони")
-                FeatureItem("Избранные клубы")
+            AppCard {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("Возможности", style = MaterialTheme.typography.titleMedium)
+                    listOf(
+                        "Бронирование мест по схеме зала",
+                        "Заказ еды и напитков",
+                        "История заказов и бронирований",
+"Избранные клубы",
+                    ).forEach { feature ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text("•", color = BrandIndigo, style = MaterialTheme.typography.bodyMedium)
+                            Text(feature, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
             }
+
+            Spacer(Modifier.weight(1f))
+
+            Text(
+                text = "© 2026 Приложение управления компьютерным клубом",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
         }
-
-        Spacer(Modifier.weight(1f))
-
-        Text(
-            "© 2026 Computer Club",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center
-        )
     }
 }
 
 @Composable
 private fun InfoRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         Text(value, style = MaterialTheme.typography.bodyMedium)
     }
-}
-
-@Composable
-private fun FeatureItem(text: String) {
-    Text("• $text", style = MaterialTheme.typography.bodyMedium)
 }

@@ -17,6 +17,7 @@ data class CheckoutResponse(
 data class PurchaseListItemResponse(
     val purchaseId: Long,
     val clubId: Long,
+    val clubName: String,
     val createdAt: String,
     val bookingTotalRub: Int,
     val productsTotalRub: Int,

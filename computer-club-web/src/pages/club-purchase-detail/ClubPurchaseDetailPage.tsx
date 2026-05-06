@@ -2,93 +2,45 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Button,
-  Card,
   Descriptions,
   message,
   Popconfirm,
-  Space,
   Spin,
   Table,
   Tag,
-  Typography,
 } from 'antd'
+import {
+  ArrowLeftOutlined,
+} from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import dayjs from 'dayjs'
 import apiClient from '../../utils/apiClient'
+import { BOOKING_STATUS, PAYMENT_STATUS } from '../../utils/statusMaps'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
+import StatusBadge from '../../components/ui/StatusBadge'
+import { tokens } from '../../theme/tokens'
 import type {
   AdminPurchaseDetailResponse,
   AdminPurchaseOrderItemDetail,
   AdminPurchaseSeatDetail,
-  BookingStatus,
-  PaymentStatus,
 } from '../../types'
 
-const PAYMENT_STATUS: Record<PaymentStatus, string> = {
-  CREATED: 'Ожидает оплаты',
-  PAID: 'Оплачено',
-  CANCELED: 'Отменено',
-  FAILED: 'Ошибка',
-  REFUND: 'Возврат',
-}
-
-const PAYMENT_STATUS_COLOR: Record<PaymentStatus, string> = {
-  CREATED: 'warning',
-  PAID: 'success',
-  CANCELED: 'default',
-  FAILED: 'error',
-  REFUND: 'processing',
-}
-
-const BOOKING_STATUS: Record<BookingStatus, string> = {
-  UPCOMING: 'Предстоит',
-  ACTIVE: 'Активна',
-  DONE: 'Завершена',
-  CANCELED: 'Отменена',
-}
-
-const BOOKING_STATUS_COLOR: Record<BookingStatus, string> = {
-  UPCOMING: 'blue',
-  ACTIVE: 'success',
-  DONE: 'default',
-  CANCELED: 'error',
-}
-
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 const seatColumns: ColumnsType<AdminPurchaseSeatDetail> = [
-  {
-    title: 'Место',
-    dataIndex: 'label',
-    key: 'label',
-  },
+  { title: 'Место', dataIndex: 'label', key: 'label' },
   {
     title: 'Тип',
     dataIndex: 'type',
     key: 'type',
-    render: (type: string) => (type === 'VIP' ? <Tag color="gold">VIP</Tag> : <Tag>Стандарт</Tag>),
+    render: (type: string) =>
+      type === 'VIP' ? <Tag color="gold">VIP</Tag> : <Tag>Стандарт</Tag>,
   },
 ]
 
 const itemColumns: ColumnsType<AdminPurchaseOrderItemDetail> = [
-  {
-    title: 'Название',
-    dataIndex: 'title',
-    key: 'title',
-  },
-  {
-    title: 'Кол-во',
-    dataIndex: 'qty',
-    key: 'qty',
-    width: 90,
-  },
+  { title: 'Название', dataIndex: 'title', key: 'title' },
+  { title: 'Кол-во', dataIndex: 'qty', key: 'qty', width: 80 },
   {
     title: 'Цена',
     dataIndex: 'priceRub',
@@ -138,7 +90,6 @@ export default function ClubPurchaseDetailPage() {
     try {
       await apiClient.post(`/admin/clubs/${clubId}/purchases/${purchaseId}/cancel`)
       message.success('Покупка отменена')
-      // полный рефетч — статусы брони и заказа могли измениться
       await fetchDetail()
     } catch {
       message.error('Не удалось отменить покупку')
@@ -158,83 +109,88 @@ export default function ClubPurchaseDetailPage() {
   if (!detail) {
     return (
       <div style={{ padding: 24 }}>
-        <Button onClick={() => navigate(`/admin/club/${clubId}/purchases`)}>← Назад</Button>
-        <div style={{ marginTop: 16, color: '#999' }}>Покупка не найдена</div>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/admin/club/${clubId}/purchases`)}>
+          Назад
+        </Button>
+        <div style={{ marginTop: 16, color: tokens.colors.textMuted }}>Покупка не найдена</div>
       </div>
     )
   }
 
+  const ps = PAYMENT_STATUS[detail.paymentStatus]
+
   return (
-    <div style={{ padding: 24, maxWidth: 900 }}>
-      {/* Заголовок */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <Button onClick={() => navigate(`/admin/club/${clubId}/purchases`)}>← Назад</Button>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          Покупка #{detail.id}
-        </Typography.Title>
-        <Tag color={PAYMENT_STATUS_COLOR[detail.paymentStatus]}>
-          {PAYMENT_STATUS[detail.paymentStatus]}
-        </Tag>
-        <div style={{ flex: 1 }} />
-        {detail.paymentStatus !== 'CANCELED' && (
-          <Popconfirm
-            title="Отменить покупку?"
-            description="Бронирование и заказ товаров также будут отменены."
-            onConfirm={handleCancel}
-            okText="Да, отменить"
-            cancelText="Нет"
-            okButtonProps={{ danger: true }}
-          >
-            <Button danger loading={canceling}>
-              Отменить
-            </Button>
-          </Popconfirm>
-        )}
-      </div>
+    <div style={{ maxWidth: 860 }}>
+      <PageHeader
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              size="small"
+              onClick={() => navigate(`/admin/club/${clubId}/purchases`)}
+            />
+            Покупка #{detail.id}
+            <StatusBadge label={ps.label} variant={ps.variant} />
+          </div>
+        }
+        extra={
+          detail.paymentStatus !== 'CANCELED' && (
+            <Popconfirm
+              title="Отменить покупку?"
+              description="Бронирование и заказ товаров также будут отменены."
+              onConfirm={handleCancel}
+              okText="Да, отменить"
+              cancelText="Нет"
+              okButtonProps={{ danger: true }}
+            >
+              <Button danger loading={canceling}>
+                Отменить покупку
+              </Button>
+            </Popconfirm>
+          )
+        }
+      />
 
       {/* Основная информация */}
-      <Card size="small" title="Основная информация" style={{ marginBottom: 16 }}>
+      <SectionCard title="Основная информация" style={{ marginBottom: 16 }}>
         <Descriptions size="small" column={2}>
           <Descriptions.Item label="Пользователь">
             {detail.userPhone ?? `#${detail.userId}`}
           </Descriptions.Item>
           <Descriptions.Item label="Дата">
-            {formatDateTime(detail.createdAt)}
+            {dayjs(detail.createdAt).format('DD.MM.YYYY HH:mm')}
           </Descriptions.Item>
-        </Descriptions>
-      </Card>
-
-      {/* Суммы */}
-      <Card size="small" title="Суммы" style={{ marginBottom: 16 }}>
-        <Descriptions size="small" column={3}>
-          <Descriptions.Item label="Бронирование">{detail.bookingTotalRub} ₽</Descriptions.Item>
-          <Descriptions.Item label="Товары">{detail.productsTotalRub} ₽</Descriptions.Item>
+          <Descriptions.Item label="Бронирование">
+            {detail.bookingTotalRub} ₽
+          </Descriptions.Item>
+          <Descriptions.Item label="Товары">
+            {detail.productsTotalRub} ₽
+          </Descriptions.Item>
           <Descriptions.Item label="Итого">
             <strong>{detail.totalRub} ₽</strong>
           </Descriptions.Item>
         </Descriptions>
-      </Card>
+      </SectionCard>
 
       {/* Бронирование */}
       {detail.booking && (
-        <Card
-          size="small"
+        <SectionCard
           title={
-            <Space>
-              {`Бронирование #${detail.booking.bookingId}`}
-              <Tag color={BOOKING_STATUS_COLOR[detail.booking.status]}>
-                {BOOKING_STATUS[detail.booking.status]}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              Бронирование #{detail.booking.bookingId}
+              <Tag color={BOOKING_STATUS[detail.booking.status].tagColor}>
+                {BOOKING_STATUS[detail.booking.status].label}
               </Tag>
-            </Space>
+            </div>
           }
           style={{ marginBottom: 16 }}
         >
           <Descriptions size="small" column={2} style={{ marginBottom: 12 }}>
             <Descriptions.Item label="Начало">
-              {formatDateTime(detail.booking.startAt)}
+              {dayjs(detail.booking.startAt).format('DD.MM.YYYY HH:mm')}
             </Descriptions.Item>
             <Descriptions.Item label="Конец">
-              {formatDateTime(detail.booking.endAt)}
+              {dayjs(detail.booking.endAt).format('DD.MM.YYYY HH:mm')}
             </Descriptions.Item>
             <Descriptions.Item label="Длительность">
               {detail.booking.durationHours.toFixed(1)} ч.
@@ -253,15 +209,12 @@ export default function ClubPurchaseDetailPage() {
             rowKey="seatId"
             pagination={false}
           />
-        </Card>
+        </SectionCard>
       )}
 
       {/* Заказ товаров */}
       {detail.productOrder && (
-        <Card
-          size="small"
-          title={`Заказ товаров #${detail.productOrder.orderId}`}
-        >
+        <SectionCard title={`Заказ товаров #${detail.productOrder.orderId}`}>
           <Table
             size="small"
             columns={itemColumns}
@@ -279,7 +232,7 @@ export default function ClubPurchaseDetailPage() {
               </Table.Summary.Row>
             )}
           />
-        </Card>
+        </SectionCard>
       )}
     </div>
   )

@@ -6,6 +6,7 @@ import com.club.backend.api.dto.PurchaseDetailsResponse
 import com.club.backend.api.dto.PurchaseListItemResponse
 import com.club.backend.service.CheckoutService
 import jakarta.validation.Valid
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
 
@@ -16,13 +17,23 @@ class CheckoutController(
 ) {
     private fun currentUserId(): Long {
         val principal = SecurityContextHolder.getContext().authentication?.principal?.toString()
-            ?: throw IllegalArgumentException("Unauthorized")
+            ?: throw org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED, "Unauthorized")
         return principal.toLong()
     }
 
     @PostMapping("/checkout")
-    fun checkout(@Valid @RequestBody request: CheckoutRequest): CheckoutResponse =
-        checkoutService.checkout(currentUserId(), request)
+    fun checkout(
+        @Valid @RequestBody request: CheckoutRequest,
+        @RequestHeader("Idempotency-Key", required = false) idempotencyKey: String?
+    ): CheckoutResponse {
+        val userId = currentUserId()
+        return try {
+            checkoutService.checkout(userId, request, idempotencyKey)
+        } catch (e: DataIntegrityViolationException) {
+            // гонка двух одинаковых запросов: транзакция откатилась, читаем победившую запись
+            checkoutService.findIdempotentResponse(userId, idempotencyKey, request) ?: throw e
+        }
+    }
 
     @GetMapping("/purchases")
     fun purchases(): List<PurchaseListItemResponse> =

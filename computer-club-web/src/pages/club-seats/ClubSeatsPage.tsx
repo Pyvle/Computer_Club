@@ -17,11 +17,14 @@ import {
   Card,
   Collapse,
   Divider,
+  Spin,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons'
 import apiClient from '../../utils/apiClient'
 import { AdminSeatResponse, CreateSeatRequest, UpdateSeatRequest, SeatSpecResponse, SpecLine } from '../../types'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
 
 interface SeatForm {
   label: string
@@ -202,6 +205,7 @@ export default function ClubSeatsPage() {
       title: 'ID',
       dataIndex: 'id',
       width: 70,
+      sorter: (a, b) => Number(a.id) - Number(b.id),
     },
     {
       title: 'Номер',
@@ -264,39 +268,38 @@ export default function ClubSeatsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Space>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            Места
-          </Typography.Title>
-          <Tag color="blue">{seats.filter((s) => s.isActive).length} активных</Tag>
-        </Space>
-        <Space>
-          <Switch
-            checked={showArchived}
-            onChange={setShowArchived}
-            checkedChildren="С архивными"
-            unCheckedChildren="Только активные"
-          />
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            Добавить место
-          </Button>
-        </Space>
-      </div>
-
-      <Table
-        rowKey="id"
-        dataSource={displayed}
-        columns={columns}
-        loading={loading}
-        pagination={{ pageSize: 20, showSizeChanger: false }}
-        rowClassName={(row) => (!row.isActive ? 'ant-table-row-disabled' : '')}
+      <PageHeader
+        title="Места"
+        subtitle={`${seats.filter((s) => s.isActive).length} активных мест`}
+        extra={
+          <Space>
+            <Switch
+              checked={showArchived}
+              onChange={setShowArchived}
+              checkedChildren="С архивными"
+              unCheckedChildren="Только активные"
+            />
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              Добавить место
+            </Button>
+          </Space>
+        }
       />
 
-      <Divider orientation="left" style={{ marginTop: 32 }}>Характеристики мест</Divider>
+      <SectionCard noPadding style={{ marginBottom: 24 }}>
+        <Table
+          rowKey="id"
+          dataSource={displayed}
+          columns={columns}
+          loading={loading}
+          pagination={{ pageSize: 20, showSizeChanger: false }}
+          rowClassName={(row) => (!row.isActive ? 'ant-table-row-disabled' : '')}
+        />
+      </SectionCard>
 
-      <Collapse
-        loading={specsLoading}
+      <Divider orientation="left">Характеристики мест</Divider>
+
+      {specsLoading ? <Spin style={{ display: 'block', margin: '24px auto' }} /> : <Collapse
         items={(['REGULAR', 'VIP'] as const).map((seatType) => {
           const spec = specs.find((s) => s.seatType === seatType)
           return {
@@ -329,7 +332,7 @@ export default function ClubSeatsPage() {
             ),
           }
         })}
-      />
+      />}
 
       <Modal
         open={specModalOpen}

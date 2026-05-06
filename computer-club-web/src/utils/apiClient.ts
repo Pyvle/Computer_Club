@@ -29,8 +29,14 @@ apiClient.interceptors.response.use(
         } catch {
           localStorage.removeItem('accessToken')
           localStorage.removeItem('refreshToken')
-          window.location.href = '/login'
+          sessionStorage.removeItem('adminVerified')
+          window.location.href = '/'
         }
+      } else {
+        // access token протух, refresh нет — сбрасываем сессию
+        localStorage.removeItem('accessToken')
+        sessionStorage.removeItem('adminVerified')
+        window.location.href = '/'
       }
     }
     return Promise.reject(error)

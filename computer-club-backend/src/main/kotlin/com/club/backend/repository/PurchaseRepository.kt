@@ -63,4 +63,50 @@ interface PurchaseRepository : JpaRepository<PurchaseEntity, Long> {
         @Param("clubId") clubId: Long,
         pageable: Pageable
     ): List<DashboardPurchasePreview>
+
+    @Query("SELECT COUNT(p) FROM PurchaseEntity p WHERE p.user.id = :userId")
+    fun countByUserId(@Param("userId") userId: Long): Long
+
+    @Query("SELECT COALESCE(SUM(p.totalRub), 0) FROM PurchaseEntity p WHERE p.user.id = :userId AND p.paymentStatus = 'PAID'")
+    fun sumPaidByUserId(@Param("userId") userId: Long): Long
+
+    @Query("SELECT COUNT(DISTINCT p.club.id) FROM PurchaseEntity p WHERE p.user.id = :userId")
+    fun countDistinctClubsByUserId(@Param("userId") userId: Long): Long
+
+    @Query("SELECT MAX(p.createdAt) FROM PurchaseEntity p WHERE p.user.id = :userId")
+    fun findLatestCreatedAtByUserId(@Param("userId") userId: Long): LocalDateTime?
+
+    @Query("""
+        SELECT p FROM PurchaseEntity p
+        JOIN FETCH p.club
+        WHERE p.user.id = :userId
+        ORDER BY p.createdAt DESC
+    """)
+    fun findRecentByUserIdFetch(@Param("userId") userId: Long, pageable: Pageable): List<PurchaseEntity>
+
+    @Query("""
+        SELECT p FROM PurchaseEntity p
+        JOIN FETCH p.club
+        WHERE p.user.id = :userId
+        ORDER BY p.createdAt DESC
+    """)
+    fun findAllByUserIdFetch(@Param("userId") userId: Long): List<PurchaseEntity>
+
+    @Query("""
+        select p from PurchaseEntity p
+        join fetch p.user
+        join fetch p.club
+        where p.id = :id
+    """)
+    fun findByIdFetch(@Param("id") id: Long): PurchaseEntity?
+
+    @Query("""
+        select p from PurchaseEntity p
+        where p.club.id = :clubId and p.user.id = :userId
+        order by p.createdAt desc
+    """)
+    fun findAllByClubIdAndUserIdFetch(
+        @Param("clubId") clubId: Long,
+        @Param("userId") userId: Long
+    ): List<PurchaseEntity>
 }

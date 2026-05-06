@@ -8,5 +8,7 @@ data class ClubResponse(
     val description: String?,
     val imageUrl: String?,
     val latitude: Double?,
-    val longitude: Double?
+    val longitude: Double?,
+    // минимальная цена из всех типов мест, null если тарифы ещё не заданы
+    val minPricePerHourRub: Int?
 )

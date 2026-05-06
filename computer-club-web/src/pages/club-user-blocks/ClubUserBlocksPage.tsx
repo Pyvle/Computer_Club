@@ -8,6 +8,8 @@ import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import apiClient from '../../utils/apiClient'
 import type { ClubUserBlockView, UpsertClubUserBlockRequest, UserLookupResult } from '../../types'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
 
 const { Text } = Typography
 
@@ -34,7 +36,7 @@ function BlockModal({ clubId, open, existing, onClose, onDone }: BlockModalProps
   const [foundUser, setFoundUser] = useState<UserLookupResult | null>(null)
   const [indefinite, setIndefinite] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [form] = Form.useForm<{ reason: string }>()
+  const [form] = Form.useForm<{ reason: string; blockedUntil?: dayjs.Dayjs | null }>()
 
   // в режиме edit сразу на шаг формы
   const isEdit = !!existing
@@ -328,21 +330,26 @@ export default function ClubUserBlocksPage() {
   ]
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>Блокировки пользователей</Typography.Title>
-        <Button type="primary" danger onClick={openNew}>
-          Заблокировать
-        </Button>
-      </div>
-
-      <Table
-        rowKey="userId"
-        dataSource={blocks}
-        columns={columns}
-        loading={loading}
-        pagination={{ pageSize: 20, showSizeChanger: false }}
+    <div>
+      <PageHeader
+        title="Блокировки"
+        subtitle="Пользователи, заблокированные в этом клубе"
+        extra={
+          <Button type="primary" danger onClick={openNew}>
+            Заблокировать
+          </Button>
+        }
       />
+
+      <SectionCard noPadding style={{ marginBottom: 0 }}>
+        <Table
+          rowKey="userId"
+          dataSource={blocks}
+          columns={columns}
+          loading={loading}
+          pagination={{ pageSize: 20, showSizeChanger: false }}
+        />
+      </SectionCard>
 
       <BlockModal
         clubId={id}

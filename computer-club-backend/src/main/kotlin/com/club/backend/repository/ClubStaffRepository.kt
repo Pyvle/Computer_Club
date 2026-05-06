@@ -32,4 +32,7 @@ interface ClubStaffRepository : JpaRepository<ClubStaffEntity, ClubStaffId> {
 
     @Query("select cs from ClubStaffEntity cs join fetch cs.club where cs.id.userId = :userId")
     fun findAllByIdUserId(@Param("userId") userId: Long): List<ClubStaffEntity>
+
+    @Query("select cs from ClubStaffEntity cs join fetch cs.club")
+    fun findAllWithClub(): List<ClubStaffEntity>
 }

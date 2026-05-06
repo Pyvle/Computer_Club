@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
             val factory = ViewModelProvider.AndroidViewModelFactory.getInstance(application)
             val appVm: AppViewModel = viewModel(factory = factory)
 
-            ComputerClubTheme(darkTheme = false, dynamicColor = false) {
+            ComputerClubTheme(darkTheme = false) {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     AppNav(appVm = appVm)
                 }

@@ -1,16 +1,25 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Alert, App, Button, Card, Form, Image, Input, List, Spin, Switch, Typography, Upload } from 'antd'
-import { SearchOutlined, UploadOutlined } from '@ant-design/icons'
-import type { UploadFile } from 'antd'
+import { Alert, App, Button, Form, Image, Input, List, Spin, Switch, Upload } from 'antd'
+import {
+  SearchOutlined,
+  UploadOutlined,
+  CheckCircleOutlined,
+  EnvironmentOutlined,
+  PictureOutlined,
+  InfoCircleOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
+} from '@ant-design/icons'
 import apiClient from '../../utils/apiClient'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
+import { tokens } from '../../theme/tokens'
 import type {
   AddressSearchResult,
   ClubSettingsResponse,
   UpdateClubSettingsRequest,
 } from '../../types'
-
-const { Text } = Typography
 
 export default function ClubSettingsPage() {
   const { clubId } = useParams<{ clubId: string }>()
@@ -74,7 +83,7 @@ export default function ClubSettingsPage() {
   }
 
   function handleSelectAddress(item: AddressSearchResult) {
-    // addressShort формируется автоматически из Nominatim — глава не редактирует
+    // addressShort формируется автоматически из Nominatim — руками не редактируется
     form.setFieldsValue({
       addressFull: item.addressFull,
       addressShort: item.addressShort,
@@ -108,22 +117,32 @@ export default function ClubSettingsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 640 }}>
-      <h2 style={{ marginTop: 0, marginBottom: 20 }}>Настройки клуба</h2>
+    <div style={{ maxWidth: 700 }}>
+      <PageHeader title="Настройки клуба" subtitle="Название, адрес, медиа и публикация" />
 
-      <Card>
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleSave}
-          onValuesChange={(changed) => {
-            if ('isActive' in changed) setIsActive(changed.isActive)
-            // сбрасываем подтверждение при ручном изменении адреса
-            if ('addressFull' in changed && confirmedAddress) {
-              setConfirmedAddress(null)
-              form.setFieldsValue({ addressShort: '', latitude: null, longitude: null })
-            }
-          }}
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={handleSave}
+        onValuesChange={(changed) => {
+          if ('isActive' in changed) setIsActive(changed.isActive)
+          // сбрасываем подтверждённый адрес при ручном изменении поля
+          if ('addressFull' in changed && confirmedAddress) {
+            setConfirmedAddress(null)
+            form.setFieldsValue({ addressShort: '', latitude: null, longitude: null })
+          }
+        }}
+      >
+        {/* скрытые поля — заполняются при выборе адреса */}
+        <Form.Item name="addressShort" hidden><Input /></Form.Item>
+        <Form.Item name="latitude"     hidden><Input /></Form.Item>
+        <Form.Item name="longitude"    hidden><Input /></Form.Item>
+        <Form.Item name="imageUrl"     hidden><Input /></Form.Item>
+
+        {/* --- Секция 1: Основное --- */}
+        <SectionCard
+          title={<SectionTitle icon={<InfoCircleOutlined />} text="Основное" />}
+          style={{ marginBottom: 16 }}
         >
           <Form.Item
             name="name"
@@ -133,18 +152,27 @@ export default function ClubSettingsPage() {
             <Input placeholder="Например: Club Zero" maxLength={120} />
           </Form.Item>
 
-          {/* скрытые поля — заполняются при выборе адреса из поиска */}
-          <Form.Item name="addressShort" hidden><Input /></Form.Item>
-          <Form.Item name="latitude" hidden><Input /></Form.Item>
-          <Form.Item name="longitude" hidden><Input /></Form.Item>
+          <Form.Item name="description" label="Описание клуба" style={{ marginBottom: 0 }}>
+            <Input.TextArea
+              rows={4}
+              placeholder="Краткое описание, которое видят пользователи в приложении"
+            />
+          </Form.Item>
+        </SectionCard>
 
+        {/* --- Секция 2: Адрес --- */}
+        <SectionCard
+          title={<SectionTitle icon={<EnvironmentOutlined />} text="Адрес" />}
+          style={{ marginBottom: 16 }}
+        >
           <Form.Item
             name="addressFull"
             label="Адрес клуба"
             rules={[{ required: true, message: 'Введите адрес для поиска' }]}
+            extra="Введите адрес и нажмите «Найти», затем выберите из списка"
           >
             <Input
-              placeholder="Введите адрес и нажмите Найти"
+              placeholder="Москва, ул. Тверская, 1"
               maxLength={500}
               suffix={
                 <Button
@@ -163,126 +191,188 @@ export default function ClubSettingsPage() {
           </Form.Item>
 
           {searchError && (
-            <Alert
-              type="warning"
-              message={searchError}
-              showIcon
-              style={{ marginBottom: 12 }}
-            />
+            <Alert type="warning" message={searchError} showIcon style={{ marginBottom: 12 }} />
           )}
 
           {searchResults.length > 0 && (
-            <Card
-              size="small"
-              title="Найденные адреса"
-              style={{ marginBottom: 16 }}
-              styles={{ body: { padding: 0 } }}
+            <div
+              style={{
+                border: `1px solid ${tokens.colors.border}`,
+                borderRadius: tokens.radius.md,
+                overflow: 'hidden',
+                marginBottom: 16,
+              }}
             >
+              <div
+                style={{
+                  padding: '8px 12px',
+                  background: tokens.colors.surfaceAlt,
+                  borderBottom: `1px solid ${tokens.colors.border}`,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: tokens.colors.textMuted,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                }}
+              >
+                Найдено вариантов: {searchResults.length}
+              </div>
               <List
                 dataSource={searchResults}
-                renderItem={(item) => (
+                renderItem={(item, idx) => (
                   <List.Item
-                    style={{ padding: '10px 16px', cursor: 'pointer' }}
+                    style={{
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      borderBottom: idx < searchResults.length - 1 ? `1px solid ${tokens.colors.border}` : 'none',
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = tokens.colors.surfaceAlt)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     onClick={() => handleSelectAddress(item)}
                   >
                     <div>
-                      <div>
-                        <Text strong>{item.addressShort}</Text>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: tokens.colors.text }}>
+                        {item.addressShort}
                       </div>
-                      <div>
-                        <Text type="secondary" style={{ fontSize: 12 }}>{item.addressFull}</Text>
+                      <div style={{ fontSize: 12, color: tokens.colors.textMuted, marginTop: 2 }}>
+                        {item.addressFull}
                       </div>
                     </div>
                   </List.Item>
                 )}
               />
-            </Card>
+            </div>
           )}
 
           {confirmedAddress && (
-            <Card
-              size="small"
-              style={{ marginBottom: 16, background: '#f6ffed', borderColor: '#b7eb8f' }}
+            <div
+              style={{
+                background: tokens.colors.successSoft,
+                border: `1px solid ${tokens.colors.success}40`,
+                borderRadius: tokens.radius.md,
+                padding: '12px 14px',
+                marginBottom: 16,
+                display: 'flex',
+                gap: 10,
+                alignItems: 'flex-start',
+              }}
             >
-              <div style={{ marginBottom: 8 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>Короткий адрес (в приложении):</Text>
-                <br />
-                <Text strong>{confirmedAddress.addressShort}</Text>
-              </div>
-              <div style={{ marginBottom: 8 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>Полный адрес:</Text>
-                <br />
-                <Text>{confirmedAddress.addressFull}</Text>
-              </div>
-              <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>Координаты: </Text>
-                <Text style={{ fontSize: 12 }}>
+              <CheckCircleOutlined style={{ color: tokens.colors.success, fontSize: 16, marginTop: 2, flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: tokens.colors.text, marginBottom: 4 }}>
+                  {confirmedAddress.addressShort}
+                </div>
+                <div style={{ fontSize: 12, color: tokens.colors.textSecondary, marginBottom: 2 }}>
+                  {confirmedAddress.addressFull}
+                </div>
+                <div style={{ fontSize: 12, color: tokens.colors.textMuted }}>
                   {confirmedAddress.latitude.toFixed(6)}, {confirmedAddress.longitude.toFixed(6)}
-                </Text>
+                </div>
               </div>
-            </Card>
+            </div>
           )}
 
-          <Form.Item name="locationText" label="Описание локации">
+          <Form.Item name="locationText" label="Уточнение локации" style={{ marginBottom: 0 }}>
             <Input
               placeholder="3 этаж ТЦ «Галактика», вход со стороны парковки"
               maxLength={255}
             />
           </Form.Item>
+        </SectionCard>
 
-          <Form.Item name="description" label="Описание клуба">
-            <Input.TextArea
-              rows={4}
-              placeholder="Краткое описание, которое видят пользователи в приложении"
-            />
-          </Form.Item>
+        {/* --- Секция 3: Фото --- */}
+        <SectionCard
+          title={<SectionTitle icon={<PictureOutlined />} text="Фото" />}
+          style={{ marginBottom: 16 }}
+        >
+          <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 14, color: tokens.colors.textSecondary, marginBottom: 10 }}>
+                Фото отображается на карточке клуба в приложении. Рекомендуемое соотношение 16:9, не более 5 МБ.
+              </div>
+              <Upload
+                accept="image/jpeg,image/png,image/webp"
+                showUploadList={false}
+                customRequest={async ({ file, onSuccess, onError }) => {
+                  setUploading(true)
+                  const formData = new FormData()
+                  formData.append('file', file as File)
+                  try {
+                    const res = await apiClient.post<{ path: string }>(
+                      '/admin/uploads/club-image',
+                      formData,
+                      { headers: { 'Content-Type': 'multipart/form-data' } }
+                    )
+                    form.setFieldValue('imageUrl', res.data.path)
+                    setImagePreview(res.data.path)
+                    onSuccess?.(res.data)
+                    message.success('Фото загружено')
+                  } catch (e) {
+                    message.error('Не удалось загрузить фото')
+                    onError?.(e as Error)
+                  } finally {
+                    setUploading(false)
+                  }
+                }}
+              >
+                <Button icon={<UploadOutlined />} loading={uploading}>
+                  {imagePreview ? 'Заменить фото' : 'Загрузить фото'}
+                </Button>
+              </Upload>
+            </div>
 
-          <Form.Item name="imageUrl" hidden><Input /></Form.Item>
-
-          <Form.Item label="Фото клуба" colon={false}>
-            <Upload
-              accept="image/jpeg,image/png,image/webp"
-              showUploadList={false}
-              customRequest={async ({ file, onSuccess, onError }) => {
-                setUploading(true)
-                const formData = new FormData()
-                formData.append('file', file as File)
-                try {
-                  const res = await apiClient.post<{ path: string }>(
-                    '/admin/uploads/club-image',
-                    formData,
-                    { headers: { 'Content-Type': 'multipart/form-data' } }
-                  )
-                  form.setFieldValue('imageUrl', res.data.path)
-                  setImagePreview(res.data.path)
-                  onSuccess?.(res.data)
-                } catch (e) {
-                  message.error('Не удалось загрузить фото')
-                  onError?.(e as Error)
-                } finally {
-                  setUploading(false)
-                }
-              }}
-            >
-              <Button icon={<UploadOutlined />} loading={uploading}>
-                {imagePreview ? 'Заменить фото' : 'Загрузить фото'}
-              </Button>
-            </Upload>
-          </Form.Item>
-
-          {imagePreview && (
-            <Form.Item>
+            {imagePreview && (
               <Image
                 src={imagePreview.startsWith('/uploads') ? `http://localhost:8080${imagePreview}` : imagePreview}
-                alt="Предпросмотр"
-                style={{ maxHeight: 200, objectFit: 'cover', borderRadius: 8 }}
+                alt="Фото клуба"
+                style={{ maxHeight: 160, maxWidth: 280, objectFit: 'cover', borderRadius: tokens.radius.md }}
               />
-            </Form.Item>
-          )}
+            )}
 
-          <Form.Item name="isActive" label="Клуб активен" valuePropName="checked">
-            <Switch />
-          </Form.Item>
+            {!imagePreview && (
+              <div
+                style={{
+                  width: 280,
+                  height: 160,
+                  border: `2px dashed ${tokens.colors.border}`,
+                  borderRadius: tokens.radius.md,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: tokens.colors.textMuted,
+                  fontSize: 13,
+                  gap: 6,
+                }}
+              >
+                <PictureOutlined style={{ fontSize: 28 }} />
+                Фото не загружено
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        {/* --- Секция 4: Публикация --- */}
+        <SectionCard
+          title={<SectionTitle icon={isActive ? <EyeOutlined /> : <EyeInvisibleOutlined />} text="Публикация" />}
+          style={{ marginBottom: 24 }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Form.Item name="isActive" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch />
+            </Form.Item>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: tokens.colors.text }}>
+                {isActive ? 'Клуб активен и виден пользователям' : 'Клуб скрыт из приложения'}
+              </div>
+              <div style={{ fontSize: 12, color: tokens.colors.textMuted, marginTop: 2 }}>
+                {isActive
+                  ? 'Пользователи могут найти клуб и создать бронирование'
+                  : 'Новые бронирования недоступны. Активные бронирования сохраняются.'}
+              </div>
+            </div>
+          </div>
 
           {!isActive && (
             <Alert
@@ -290,17 +380,28 @@ export default function ClubSettingsPage() {
               showIcon
               message="Клуб будет скрыт из приложения"
               description="Пользователи не смогут видеть клуб и создавать новые бронирования. Активные бронирования останутся."
-              style={{ marginBottom: 16 }}
+              style={{ marginTop: 14, marginBottom: 0 }}
             />
           )}
+        </SectionCard>
 
-          <Form.Item style={{ marginBottom: 0 }}>
-            <Button type="primary" htmlType="submit" loading={saving}>
-              Сохранить
-            </Button>
-          </Form.Item>
-        </Form>
-      </Card>
+        {/* Кнопка сохранения */}
+        <Form.Item style={{ marginBottom: 0 }}>
+          <Button type="primary" htmlType="submit" loading={saving} size="large">
+            Сохранить настройки
+          </Button>
+        </Form.Item>
+      </Form>
     </div>
+  )
+}
+
+// вспомогательный компонент — заголовок секции с иконкой
+function SectionTitle({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <span style={{ color: tokens.colors.primary, fontSize: 15 }}>{icon}</span>
+      {text}
+    </span>
   )
 }

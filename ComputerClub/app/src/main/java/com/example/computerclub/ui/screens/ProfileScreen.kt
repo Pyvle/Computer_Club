@@ -1,22 +1,26 @@
 package com.example.computerclub.ui.screens
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.navigation.NavHostController
 import com.example.computerclub.app.Routes
+import com.example.computerclub.ui.components.AppCard
+import com.example.computerclub.ui.components.AppPrimaryButton
+import com.example.computerclub.ui.components.AppSecondaryButton
+import com.example.computerclub.ui.components.AppScreenContainer
+import com.example.computerclub.ui.theme.BrandIndigo
+import com.example.computerclub.ui.theme.BrandIndigoSoft
+import com.example.computerclub.ui.theme.TextSecondary
 import com.example.computerclub.vm.AppViewModel
 
 @Composable
@@ -24,88 +28,122 @@ fun ProfileScreen(appVm: AppViewModel, nav: NavHostController) {
     val loggedIn = appVm.isLoggedIn()
     val u = appVm.user
 
-    if (!loggedIn || u == null) {
-        Column(
-            Modifier.fillMaxSize().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text("Войди, чтобы синхронизировать профиль и историю заказов.")
-            Button(
-                onClick = { nav.navigate("login_phone?from=${Routes.Profile}") },
-                modifier = Modifier.fillMaxWidth()
+    AppScreenContainer {
+        if (!loggedIn || u == null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Войти по телефону")
-            }
-        }
-        return
-    }
-
-    val context = LocalContext.current
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> if (granted) appVm.updateNotifications(true) }
-
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-
-        Text("👤 ${u.phone}", style = MaterialTheme.typography.titleLarge)
-
-        Card(onClick = { nav.navigate(Routes.History) }) {
-            Row(
-                Modifier.fillMaxWidth().padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("История заказов", style = MaterialTheme.typography.titleMedium)
-                    Text("Брони и покупки", style = MaterialTheme.typography.labelMedium)
-                }
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
-            }
-        }
-
-        Card {
-            Row(
-                Modifier.fillMaxWidth().padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Уведомления", style = MaterialTheme.typography.titleMedium)
-                    Text("За 30 минут до брони", style = MaterialTheme.typography.labelMedium)
-                }
-                Switch(
-                    checked = appVm.notificationsEnabled,
-                    onCheckedChange = { enabled ->
-                        if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            val granted = ContextCompat.checkSelfPermission(
-                                context, Manifest.permission.POST_NOTIFICATIONS
-                            ) == PackageManager.PERMISSION_GRANTED
-                            if (!granted) {
-                                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                return@Switch
-                            }
-                        }
-                        appVm.updateNotifications(enabled)
-                    }
+                Spacer(Modifier.height(32.dp))
+                Icon(
+                    imageVector = Icons.Filled.Person,
+                    contentDescription = null,
+                    modifier = Modifier.size(72.dp),
+                    tint = BrandIndigo
+                )
+                Text(
+                    text = "Войдите в аккаунт",
+                    style = MaterialTheme.typography.headlineMedium
+                )
+                Text(
+                    text = "Синхронизируйте профиль и историю заказов.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+                AppPrimaryButton(
+                    text = "Войти по телефону",
+                    onClick = { nav.navigate("login_phone?from=${Routes.Profile}") },
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
+            return@AppScreenContainer
         }
 
-        Card(onClick = { nav.navigate(Routes.About) }) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // акцентный блок с номером телефона
             Row(
-                Modifier.fillMaxWidth().padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(color = BrandIndigoSoft, shape = MaterialTheme.shapes.large)
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("О приложении", style = MaterialTheme.typography.titleMedium)
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(color = BrandIndigo, shape = CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Person,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Text(
+                    text = u.phone,
+                    style = MaterialTheme.typography.titleLarge
+                )
             }
-        }
 
-        Spacer(Modifier.weight(1f))
+            AppCard(onClick = { nav.navigate(Routes.History) }) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("История заказов", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = "Брони и покупки",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = TextSecondary
+                    )
+                }
+            }
 
-        OutlinedButton(onClick = { appVm.logout() }, modifier = Modifier.fillMaxWidth()) {
-            Text("Выйти из аккаунта")
+            AppCard(onClick = { nav.navigate(Routes.About) }) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("О приложении", style = MaterialTheme.typography.titleMedium)
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = TextSecondary
+                    )
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            AppSecondaryButton(
+                text = "Выйти из аккаунта",
+                onClick = { appVm.logout() },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }

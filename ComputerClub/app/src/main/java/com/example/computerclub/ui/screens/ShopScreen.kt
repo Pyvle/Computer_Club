@@ -198,7 +198,7 @@ fun ShopScreen(
         ) {
             // --- Карточка клуба ---
             item(key = "club_card") {
-                Card(shape = RoundedCornerShape(14.dp)) {
+                com.example.computerclub.ui.components.AppCard {
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -207,13 +207,19 @@ fun ShopScreen(
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(club?.name ?: "Клуб", style = MaterialTheme.typography.titleMedium)
-                            Text(club?.address ?: "", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                club?.address ?: "",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = com.example.computerclub.ui.theme.TextSecondary
+                            )
                         }
                         IconButton(onClick = { club?.let { appVm.toggleFavoriteClub(it.id) } }) {
+                            val isFav = club != null && appVm.isFavoriteClub(club.id)
                             Icon(
-                                imageVector = if (club != null && appVm.isFavoriteClub(club.id))
-                                    Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                                contentDescription = "Избранное"
+                                imageVector = if (isFav) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                                contentDescription = "Избранное",
+                                tint = if (isFav) com.example.computerclub.ui.theme.BrandIndigo
+                                       else com.example.computerclub.ui.theme.TextMuted
                             )
                         }
                     }
@@ -222,12 +228,10 @@ fun ShopScreen(
 
             // --- Поиск ---
             item(key = "search") {
-                OutlinedTextField(
+                com.example.computerclub.ui.components.AppTextField(
                     value = query,
                     onValueChange = { query = it },
-                    placeholder = { Text("Поиск по товарам и услугам") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    label = "Поиск по товарам и услугам",
                 )
             }
 
@@ -319,20 +323,17 @@ fun ShopScreen(
 
         // нижняя кнопка
         Surface(
-            tonalElevation = 2.dp,
+            color = com.example.computerclub.ui.theme.AppSurfaceAlt,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
         ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Button(
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                com.example.computerclub.ui.components.AppPrimaryButton(
+                    text = "Перейти в корзину",
                     onClick = onOpenCart,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("В корзину") }
+                )
             }
         }
     }
@@ -387,7 +388,7 @@ fun ShopScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(240.dp)
-                        .clip(RoundedCornerShape(22.dp))
+                        .clip(com.example.computerclub.ui.theme.ShapeXL)
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) { Text("Фото товара") }
@@ -400,7 +401,7 @@ fun ShopScreen(
 
                 Card(
                     Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp)
+                    shape = com.example.computerclub.ui.theme.ShapeLarge
                 ) {
                     Row(
                         Modifier
@@ -443,17 +444,16 @@ private fun ProductTile(
         }
     }
 
-    // светлая тема
-    val cardBg = Color(0xFFFFFFFF)
-    val imageBg = Color(0xFFF4F4F4)
-    val pillBg = Color(0xFFEFEFEF)
-    val textPrimary = Color(0xFF111111)
-    val textSecondary = Color(0xFF7A7A7A)
+    val imageBg = com.example.computerclub.ui.theme.AppSurfaceAlt
+    val pillBg = com.example.computerclub.ui.theme.AppSurfaceAlt
+    val textPrimary = MaterialTheme.colorScheme.onSurface
+    val textSecondary = com.example.computerclub.ui.theme.TextSecondary
 
     Card(
-        modifier = modifier.shadow(6.dp, RoundedCornerShape(24.dp)),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = cardBg)
+        modifier = modifier,
+        shape = com.example.computerclub.ui.theme.ShapeLarge,
+        colors = CardDefaults.cardColors(containerColor = com.example.computerclub.ui.theme.AppSurface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.computerclub.ui.theme.AppBorder)
     ) {
         Column(
             modifier = Modifier
@@ -467,7 +467,7 @@ private fun ProductTile(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(160.dp)
-                    .clip(RoundedCornerShape(22.dp))
+                    .clip(com.example.computerclub.ui.theme.ShapeXL)
                     .background(imageBg),
                 contentAlignment = Alignment.Center
             ) {

@@ -14,7 +14,11 @@ class FileStorageService(private val storageProperties: StorageProperties) {
 
     private val root: Path = Paths.get(storageProperties.uploadDir).toAbsolutePath()
 
-    fun saveClubImage(file: MultipartFile): String {
+    fun saveClubImage(file: MultipartFile): String = saveImage(file, "clubs", "clubs")
+
+    fun saveProductImage(file: MultipartFile): String = saveImage(file, "products", "products")
+
+    private fun saveImage(file: MultipartFile, subDir: String, urlSegment: String): String {
         require(!file.isEmpty) { "Файл пустой" }
 
         val extension = when (file.contentType) {
@@ -24,13 +28,13 @@ class FileStorageService(private val storageProperties: StorageProperties) {
             else -> throw IllegalArgumentException("Неподдерживаемый тип: ${file.contentType}")
         }
 
-        val dir = root.resolve("clubs")
+        val dir = root.resolve(subDir)
         Files.createDirectories(dir)
 
         val fileName = "${UUID.randomUUID()}$extension"
         file.inputStream.use { Files.copy(it, dir.resolve(fileName), StandardCopyOption.REPLACE_EXISTING) }
 
-        return "/uploads/clubs/$fileName"
+        return "/uploads/$urlSegment/$fileName"
     }
 
     /** Удаляет файл, если путь указывает на локальное хранилище. */

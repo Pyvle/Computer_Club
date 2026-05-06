@@ -49,7 +49,12 @@ export default function LoginPage() {
       localStorage.setItem('accessToken', data.accessToken)
       localStorage.setItem('refreshToken', data.refreshToken)
       const ctx = await loadContext()
-      navigate(resolveRedirect(ctx.globalRole), { replace: true })
+      const from = searchParams.get('from')
+      if (from && !from.startsWith('/admin')) {
+        navigate(from, { replace: true })
+      } else {
+        navigate(resolveRedirect(ctx.globalRole), { replace: true })
+      }
     } catch {
       message.error('Неверный или истёкший код')
     } finally {

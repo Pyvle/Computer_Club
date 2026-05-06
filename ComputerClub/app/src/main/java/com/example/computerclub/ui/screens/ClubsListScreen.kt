@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -92,12 +93,11 @@ fun ClubsListScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedTextField(
+            com.example.computerclub.ui.components.AppTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("Поиск клуба / района / адреса") },
+                label = "Поиск клуба / района / адреса",
                 modifier = Modifier.weight(1f),
-                singleLine = true
             )
 
             FilledTonalIconButton(
@@ -111,7 +111,10 @@ fun ClubsListScreen(
         }
 
         if (loading) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(),
+                color = com.example.computerclub.ui.theme.BrandIndigo
+            )
         }
 
         error?.let {
@@ -119,7 +122,17 @@ fun ClubsListScreen(
         }
 
         // Переключение вкладок (Избранные / Все)
-        TabRow(selectedTabIndex = if (tab == ClubsTab.Favorites) 0 else 1) {
+        TabRow(
+            selectedTabIndex = if (tab == ClubsTab.Favorites) 0 else 1,
+            containerColor = com.example.computerclub.ui.theme.AppSurface,
+            contentColor = com.example.computerclub.ui.theme.BrandIndigo,
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[if (tab == ClubsTab.Favorites) 0 else 1]),
+                    color = com.example.computerclub.ui.theme.BrandIndigo
+                )
+            }
+        ) {
             Tab(
                 selected = tab == ClubsTab.Favorites,
                 onClick = { tab = ClubsTab.Favorites },
@@ -133,12 +146,20 @@ fun ClubsListScreen(
         }
 
         if (tab == ClubsTab.Favorites && favorites.isEmpty()) {
-            Text("Избранных клубов нет")
+            com.example.computerclub.ui.components.AppEmptyState(
+                icon = Icons.Outlined.BookmarkBorder,
+                title = "Нет избранных клубов",
+                subtitle = "Добавляйте клубы в избранное, нажимая на закладку"
+            )
             return
         }
 
         if (currentList.isEmpty()) {
-            Text("Ничего не найдено")
+            com.example.computerclub.ui.components.AppEmptyState(
+                icon = Icons.Filled.ViewList,
+                title = "Ничего не найдено",
+                subtitle = "Попробуйте изменить запрос"
+            )
             return
         }
 
@@ -260,13 +281,13 @@ private fun ClubCard(
     onOpen: () -> Unit
 ) {
     val placeholder = painterResource(R.drawable.placeholder_club)
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen)
+    com.example.computerclub.ui.components.AppCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onOpen
     ) {
         Box(Modifier.fillMaxWidth()) {
             Column {
+                // фиксированный aspect ratio — карточки не "прыгают" пока грузится фото
                 AsyncImage(
                     model = club.imageUrl,
                     contentDescription = club.name,
@@ -276,27 +297,44 @@ private fun ClubCard(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp)
-                        .clip(MaterialTheme.shapes.medium)
+                        .aspectRatio(16f / 9f)
+                        .clip(com.example.computerclub.ui.theme.ShapeLarge)
                 )
 
                 Column(
                     modifier = Modifier.padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    if (club.isBlocked) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = "Заблокирован${club.blockReason?.let { ": $it" } ?: ""}",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall
+                            text = club.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
                         )
+                        if (club.isBlocked) {
+                            com.example.computerclub.ui.components.AppStatusChip(
+                                label = "Заблокирован",
+                                tone = com.example.computerclub.ui.components.ChipTone.ERROR
+                            )
+                        }
                     }
-                    Text(club.name, style = MaterialTheme.typography.titleMedium)
-                    Text(club.location, style = MaterialTheme.typography.labelMedium)
-                    Text(club.address, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = club.location,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = com.example.computerclub.ui.theme.TextSecondary
+                    )
+                    Text(
+                        text = club.address,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = com.example.computerclub.ui.theme.TextSecondary
+                    )
                 }
             }
 
+            // кнопка избранного поверх изображения
             IconButton(
                 onClick = onToggleFavorite,
                 modifier = Modifier.align(Alignment.TopEnd)
@@ -304,7 +342,8 @@ private fun ClubCard(
                 Icon(
                     imageVector = if (isFavorite) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                     contentDescription = "Избранное",
-                    tint = MaterialTheme.colorScheme.onPrimary
+                    tint = if (isFavorite) com.example.computerclub.ui.theme.BrandIndigo
+                    else com.example.computerclub.ui.theme.TextMuted
                 )
             }
         }

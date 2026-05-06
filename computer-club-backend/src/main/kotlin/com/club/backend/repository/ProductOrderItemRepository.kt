@@ -7,11 +7,13 @@ import org.springframework.data.repository.query.Param
 
 interface ProductOrderItemRepository : JpaRepository<ProductOrderItemEntity, Long> {
 
+    fun existsByProductId(productId: Long): Boolean
+
     @Query(
         """
         select i
         from ProductOrderItemEntity i
-        join fetch i.product p
+        left join fetch i.product p
         where i.productOrder.id = :orderId
         """
     )

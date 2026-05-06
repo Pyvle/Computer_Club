@@ -1,27 +1,58 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import {
-  Table, Button, Tag, Popconfirm, Modal, Form, Input,
-  Select, Typography, Space, Switch, message, Alert, Tooltip,
+  Button, Modal, Form, Input, Select, Space,
+  Switch, message, Alert, Tooltip, Popconfirm,
 } from 'antd'
-import type { ColumnsType } from 'antd/es/table'
+import {
+  UserOutlined,
+  TeamOutlined,
+  SettingOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+} from '@ant-design/icons'
+import dayjs from 'dayjs'
 import apiClient from '../../utils/apiClient'
 import { useAuth } from '../../contexts/AuthContext'
 import type { ClubStaffView, ClubStaffPermissionsResponse, UserLookupResult } from '../../types'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
+import EmptyState from '../../components/ui/EmptyState'
+import { tokens } from '../../theme/tokens'
 
-const { Text } = Typography
+// --- Права: группировка и описания ---
 
-const PERMISSION_LABELS: Record<string, string> = {
-  CLUB_ADMINS_MANAGE: 'Управление персоналом',
-  CLUB_CATALOG_MANAGE: 'Управление каталогом',
-  CLUB_SEATS_MANAGE: 'Управление местами',
-  CLUB_USER_BLOCKS_MANAGE: 'Блокировки пользователей',
-  CLUB_FLOORPLANS_MANAGE: 'Управление схемами зала',
-  CLUB_REPORTS_VIEW: 'Просмотр отчётов (брони, покупки)',
-  CLUB_AUDIT_VIEW: 'Просмотр аудита',
+interface PermissionMeta {
+  label: string
+  description: string
 }
 
-const ALL_PERMISSIONS = Object.keys(PERMISSION_LABELS)
+const PERMISSION_META: Record<string, PermissionMeta> = {
+  CLUB_ADMINS_MANAGE:     { label: 'Управление персоналом',   description: 'Добавление и удаление сотрудников, изменение их прав' },
+  CLUB_CATALOG_MANAGE:    { label: 'Управление каталогом',    description: 'Добавление товаров, редактирование цен и доступности' },
+  CLUB_SEATS_MANAGE:      { label: 'Управление местами',      description: 'Добавление, редактирование и архивирование мест' },
+  CLUB_FLOORPLANS_MANAGE: { label: 'Управление схемами зала', description: 'Создание, публикация и архивирование схем' },
+  CLUB_REPORTS_VIEW:      { label: 'Отчёты и дашборд',       description: 'Просмотр бронирований, покупок и статистики клуба' },
+  CLUB_AUDIT_VIEW:        { label: 'Аудит-журнал',           description: 'Просмотр журнала действий сотрудников' },
+  CLUB_USER_BLOCKS_MANAGE:{ label: 'Блокировки пользователей',description: 'Блокировка и разблокировка клиентов клуба' },
+}
+
+const PERMISSION_GROUPS: { title: string; keys: string[] }[] = [
+  {
+    title: 'Операции',
+    keys: ['CLUB_REPORTS_VIEW', 'CLUB_AUDIT_VIEW'],
+  },
+  {
+    title: 'Структура клуба',
+    keys: ['CLUB_CATALOG_MANAGE', 'CLUB_SEATS_MANAGE', 'CLUB_FLOORPLANS_MANAGE'],
+  },
+  {
+    title: 'Управление',
+    keys: ['CLUB_ADMINS_MANAGE', 'CLUB_USER_BLOCKS_MANAGE'],
+  },
+]
+
+// --- Модалка прав ---
 
 interface PermissionsModalProps {
   clubId: number
@@ -68,9 +99,7 @@ function PermissionsModal({ clubId, userId, phone, currentUserId, open, onClose,
         await apiClient.delete(`/admin/clubs/${clubId}/staff/${userId}/permissions/${permission}`)
       } else {
         // отличается от дефолта — ставим явный оверрайд
-        await apiClient.put(`/admin/clubs/${clubId}/staff/${userId}/permissions/${permission}`, {
-          granted: newGranted,
-        })
+        await apiClient.put(`/admin/clubs/${clubId}/staff/${userId}/permissions/${permission}`, { granted: newGranted })
       }
       await fetchPermissions()
       onChanged()
@@ -81,88 +110,243 @@ function PermissionsModal({ clubId, userId, phone, currentUserId, open, onClose,
     }
   }
 
-  const columns: ColumnsType<{ key: string }> = [
-    {
-      title: 'Право',
-      dataIndex: 'key',
-      render: (p: string) => PERMISSION_LABELS[p] ?? p,
-    },
-    {
-      title: 'По умолчанию',
-      dataIndex: 'key',
-      width: 120,
-      render: (p: string) => {
-        if (!data) return null
-        const roleGranted = (data.rolePermissions as string[]).includes(p)
-        return roleGranted
-          ? <Tag color="green">Разрешено</Tag>
-          : <Tag color="default">Запрещено</Tag>
-      },
-    },
-    {
-      title: 'Текущее',
-      dataIndex: 'key',
-      width: 180,
-      render: (p: string) => {
-        if (!data) return null
-        const isGranted = (data.effectivePermissions as string[]).includes(p)
-        const hasOverride = data.overrides.some(o => o.permission === p)
-        // запрещаем самому себе снять CLUB_ADMINS_MANAGE — это заблокирует доступ
-        const selfLockout = isSelf && p === 'CLUB_ADMINS_MANAGE'
-        const toggle = (
-          <Space size={8}>
-            <Switch
-              checked={isGranted}
-              size="small"
-              loading={saving === p}
-              disabled={saving !== null || selfLockout}
-              onChange={(checked) => handleToggle(p, checked)}
-            />
-            <Text style={{ fontSize: 13 }} type={isGranted ? undefined : 'secondary'}>
-              {isGranted ? 'Разрешено' : 'Запрещено'}
-            </Text>
-            {hasOverride && (
-              <Tag color="orange" style={{ fontSize: 11, marginLeft: 0 }}>изменено</Tag>
-            )}
-          </Space>
-        )
-        return selfLockout
-          ? <Tooltip title="Нельзя снять у себя право на управление персоналом">{toggle}</Tooltip>
-          : toggle
-      },
-    },
-  ]
-
   return (
     <Modal
-      title={`Права: ${phone ?? `ID ${userId}`}`}
+      title={`Права доступа: ${phone ?? `ID ${userId}`}`}
       open={open}
       onCancel={onClose}
       footer={<Button onClick={onClose}>Закрыть</Button>}
-      width={620}
+      width={560}
     >
-      {loading && <Text type="secondary">Загрузка...</Text>}
-      {data && (
-        <>
+      {loading && (
+        <div style={{ padding: 24, textAlign: 'center', color: tokens.colors.textMuted }}>
+          Загрузка...
+        </div>
+      )}
+      {!loading && data && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {isSelf && (
             <Alert
               type="warning"
               showIcon
-              style={{ marginBottom: 12 }}
               message="Вы редактируете собственные права. Запрет «Управление персоналом» заблокирует вам доступ к этому экрану."
             />
           )}
-          <Table
-            dataSource={ALL_PERMISSIONS.map(p => ({ key: p }))}
-            pagination={false}
-            size="small"
-            columns={columns}
-          />
-        </>
+          {PERMISSION_GROUPS.map((group) => (
+            <div key={group.title}>
+              {/* Заголовок группы */}
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: tokens.colors.textMuted,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.07em',
+                  marginBottom: 8,
+                }}
+              >
+                {group.title}
+              </div>
+
+              {/* Права в группе */}
+              <div
+                style={{
+                  border: `1px solid ${tokens.colors.border}`,
+                  borderRadius: tokens.radius.md,
+                  overflow: 'hidden',
+                }}
+              >
+                {group.keys.map((perm, idx) => {
+                  const meta = PERMISSION_META[perm]
+                  const isGranted = (data.effectivePermissions as string[]).includes(perm)
+                  const hasOverride = data.overrides.some((o) => o.permission === perm)
+                  const selfLockout = isSelf && perm === 'CLUB_ADMINS_MANAGE'
+
+                  const row = (
+                    <div
+                      key={perm}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '10px 14px',
+                        borderTop: idx > 0 ? `1px solid ${tokens.colors.border}` : 'none',
+                        background: hasOverride ? `${tokens.colors.warning}08` : tokens.colors.surface,
+                      }}
+                    >
+                      {/* Текст */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: tokens.colors.text }}>
+                          {meta?.label ?? perm}
+                        </div>
+                        {meta?.description && (
+                          <div style={{ fontSize: 12, color: tokens.colors.textMuted, marginTop: 1 }}>
+                            {meta.description}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Бейдж переопределения */}
+                      {hasOverride && (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            padding: '2px 8px',
+                            borderRadius: 10,
+                            background: tokens.colors.warningSoft,
+                            color: tokens.colors.warning,
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                          }}
+                        >
+                          изменено
+                        </span>
+                      )}
+
+                      {/* Переключатель */}
+                      <Switch
+                        checked={isGranted}
+                        size="small"
+                        loading={saving === perm}
+                        disabled={saving !== null || selfLockout}
+                        onChange={(checked) => handleToggle(perm, checked)}
+                        style={{ flexShrink: 0 }}
+                      />
+                    </div>
+                  )
+
+                  return selfLockout ? (
+                    <Tooltip title="Нельзя снять у себя право на управление персоналом" key={perm}>
+                      {row}
+                    </Tooltip>
+                  ) : row
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </Modal>
   )
 }
+
+// --- Карточка сотрудника ---
+
+interface StaffCardProps {
+  member: ClubStaffView
+  isSelf: boolean
+  canManage: boolean
+  onOpenPermissions: () => void
+  onDelete: () => void
+}
+
+function StaffCard({ member, isSelf, canManage, onOpenPermissions, onDelete }: StaffCardProps) {
+  const isOwner = member.role === 'OWNER'
+
+  return (
+    <div
+      style={{
+        background: tokens.colors.surface,
+        border: `1px solid ${tokens.colors.border}`,
+        borderRadius: tokens.radius.md,
+        padding: '14px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+      }}
+    >
+      {/* Аватар */}
+      <div
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: '50%',
+          background: isOwner ? `${tokens.colors.warning}20` : tokens.colors.primarySoft,
+          color: isOwner ? tokens.colors.warning : tokens.colors.primary,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 20,
+          flexShrink: 0,
+        }}
+      >
+        {isOwner ? <TeamOutlined /> : <UserOutlined />}
+      </div>
+
+      {/* Контент */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600, fontSize: 14, color: tokens.colors.text }}>
+            {member.phone ?? `ID ${member.userId}`}
+          </span>
+          {/* Бейдж роли */}
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: 10,
+              background: isOwner ? `${tokens.colors.warning}20` : tokens.colors.primarySoft,
+              color: isOwner ? tokens.colors.warning : tokens.colors.primary,
+            }}
+          >
+            {isOwner ? 'Владелец' : 'Администратор'}
+          </span>
+          {isSelf && (
+            <span
+              style={{
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 10,
+                background: tokens.colors.surfaceAlt,
+                color: tokens.colors.textMuted,
+              }}
+            >
+              вы
+            </span>
+          )}
+        </div>
+        {member.addedAt && (
+          <div style={{ fontSize: 12, color: tokens.colors.textMuted, marginTop: 2 }}>
+            Добавлен {dayjs(member.addedAt).format('DD.MM.YYYY')}
+            {member.addedByPhone && ` · ${member.addedByPhone}`}
+          </div>
+        )}
+      </div>
+
+      {/* Действия */}
+      {!isOwner && canManage && (
+        <Space size={6} style={{ flexShrink: 0 }}>
+          <Button
+            size="small"
+            icon={<SettingOutlined />}
+            onClick={onOpenPermissions}
+          >
+            Права
+          </Button>
+          {isSelf ? (
+            <Tooltip title="Нельзя удалить самого себя">
+              <Button size="small" danger icon={<DeleteOutlined />} disabled />
+            </Tooltip>
+          ) : (
+            <Popconfirm
+              title="Удалить администратора?"
+              okText="Удалить"
+              cancelText="Отмена"
+              okButtonProps={{ danger: true }}
+              onConfirm={onDelete}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
+        </Space>
+      )}
+    </div>
+  )
+}
+
+// --- Основной компонент ---
 
 export default function ClubStaffPage() {
   const { clubId } = useParams<{ clubId: string }>()
@@ -184,15 +368,14 @@ export default function ClubStaffPage() {
 
   useEffect(() => {
     if (!user) return
-    const myClub = user.clubs.find(c => c.clubId === id)
+    const myClub = user.clubs.find((c) => c.clubId === id)
     if (myClub?.role === 'OWNER' || user.globalRole === 'GLOBAL_ADMIN') {
       setCanManage(true)
       return
     }
-    // для ADMIN — проверяем эффективные права
     apiClient
       .get<ClubStaffPermissionsResponse>(`/admin/clubs/${id}/staff/${user.userId}/permissions`)
-      .then(res => setCanManage(res.data.effectivePermissions.includes('CLUB_ADMINS_MANAGE')))
+      .then((res) => setCanManage(res.data.effectivePermissions.includes('CLUB_ADMINS_MANAGE')))
       .catch(() => setCanManage(false))
   }, [id, user])
 
@@ -261,121 +444,81 @@ export default function ClubStaffPage() {
     }
   }
 
-  const filteredStaff = staff.filter(s => {
+  const filteredStaff = staff.filter((s) => {
     const matchPhone = !phoneFilter || (s.phone ?? '').includes(phoneFilter.trim())
     const matchRole = !roleFilter || s.role === roleFilter
     return matchPhone && matchRole
   })
 
-  const columns: ColumnsType<ClubStaffView> = [
-    { title: 'ID', dataIndex: 'userId', width: 70 },
-    {
-      title: 'Телефон',
-      dataIndex: 'phone',
-      render: (v: string | null) => v ?? '—',
-    },
-    {
-      title: 'Роль',
-      dataIndex: 'role',
-      width: 100,
-      render: (role: string) => (
-        <Tag color={role === 'OWNER' ? 'gold' : 'blue'}>{role}</Tag>
-      ),
-    },
-    {
-      title: 'Добавлен',
-      dataIndex: 'addedAt',
-      width: 160,
-      render: (v: string | null) => {
-        if (!v) return '—'
-        const d = new Date(v)
-        return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-      },
-    },
-    {
-      title: 'Кем добавлен',
-      width: 160,
-      render: (_: unknown, record: ClubStaffView) => {
-        if (!record.addedByUserId) return '—'
-        return record.addedByPhone ?? `ID ${record.addedByUserId}`
-      },
-    },
-    {
-      title: 'Действия',
-      width: 220,
-      render: (_: unknown, record: ClubStaffView) => {
-        if (record.role === 'OWNER') return null
-        const isSelf = user?.userId === record.userId
-        return (
-          <Space>
-            {canManage && (
-              <Button
-                size="small"
-                onClick={() => setPermModal({ userId: record.userId, phone: record.phone })}
-              >
-                Права
-              </Button>
-            )}
-            {canManage && (
-              isSelf ? (
-                <Tooltip title="Нельзя удалить самого себя">
-                  <Button size="small" danger disabled>Удалить</Button>
-                </Tooltip>
-              ) : (
-                <Popconfirm
-                  title="Удалить администратора?"
-                  okText="Удалить"
-                  cancelText="Отмена"
-                  okButtonProps={{ danger: true }}
-                  onConfirm={() => handleDelete(record.userId)}
-                >
-                  <Button size="small" danger>Удалить</Button>
-                </Popconfirm>
-              )
-            )}
-          </Space>
-        )
-      },
-    },
-  ]
-
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>Персонал клуба</Typography.Title>
-        {canManage && (
-          <Button type="primary" onClick={() => setAddOpen(true)}>Добавить админа</Button>
-        )}
-      </div>
-
-      <Space style={{ marginBottom: 16 }}>
-        <Input.Search
-          placeholder="Поиск по телефону"
-          allowClear
-          style={{ width: 220 }}
-          value={phoneFilter}
-          onChange={e => setPhoneFilter(e.target.value)}
-        />
-        <Select
-          placeholder="Роль"
-          allowClear
-          style={{ width: 140 }}
-          value={roleFilter}
-          onChange={v => setRoleFilter(v ?? null)}
-          options={[
-            { value: 'OWNER', label: 'OWNER' },
-            { value: 'ADMIN', label: 'ADMIN' },
-          ]}
-        />
-      </Space>
-
-      <Table
-        rowKey="userId"
-        dataSource={filteredStaff}
-        columns={columns}
-        loading={loadingStaff}
-        pagination={false}
+    <div>
+      <PageHeader
+        title="Персонал клуба"
+        subtitle="Администраторы и их права доступа"
+        extra={
+          canManage && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
+              Добавить администратора
+            </Button>
+          )
+        }
       />
+
+      {/* Фильтры */}
+      <SectionCard style={{ marginBottom: 16 }}>
+        <Space wrap>
+          <Input.Search
+            placeholder="Поиск по телефону"
+            allowClear
+            style={{ width: 220 }}
+            value={phoneFilter}
+            onChange={(e) => setPhoneFilter(e.target.value)}
+            size="small"
+          />
+          <Select
+            placeholder="Роль"
+            allowClear
+            style={{ width: 160 }}
+            size="small"
+            value={roleFilter}
+            onChange={(v) => setRoleFilter(v ?? null)}
+            options={[
+              { value: 'OWNER', label: 'Владелец' },
+              { value: 'ADMIN', label: 'Администратор' },
+            ]}
+          />
+        </Space>
+      </SectionCard>
+
+      {/* Список сотрудников */}
+      <SectionCard>
+        {loadingStaff ? (
+          <div style={{ textAlign: 'center', padding: 32, color: tokens.colors.textMuted }}>
+            Загрузка...
+          </div>
+        ) : filteredStaff.length === 0 ? (
+          <EmptyState
+            icon={<TeamOutlined />}
+            title="Сотрудников нет"
+            description="Добавьте администраторов клуба"
+            actionLabel={canManage ? 'Добавить администратора' : undefined}
+            onAction={canManage ? () => setAddOpen(true) : undefined}
+          />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filteredStaff.map((member) => (
+              <StaffCard
+                key={member.userId}
+                member={member}
+                isSelf={user?.userId === member.userId}
+                canManage={canManage}
+                onOpenPermissions={() => setPermModal({ userId: member.userId, phone: member.phone })}
+                onDelete={() => handleDelete(member.userId)}
+              />
+            ))}
+          </div>
+        )}
+      </SectionCard>
 
       {/* Модалка добавления */}
       <Modal
@@ -399,10 +542,22 @@ export default function ClubStaffPage() {
           </Form>
         ) : (
           <div style={{ marginTop: 16 }}>
-            <p style={{ marginBottom: 4 }}>ID: <strong>{foundUser.userId}</strong></p>
-            <p style={{ marginBottom: 4 }}>Телефон: <strong>{foundUser.phone ?? '—'}</strong></p>
-            <p style={{ marginBottom: 0 }}>Роль: <strong>{foundUser.role}</strong></p>
-            <Space style={{ width: '100%', justifyContent: 'flex-end', marginTop: 16 }}>
+            <div
+              style={{
+                background: tokens.colors.surfaceAlt,
+                borderRadius: tokens.radius.md,
+                padding: '12px 16px',
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 600, color: tokens.colors.text, marginBottom: 4 }}>
+                {foundUser.phone ?? `ID ${foundUser.userId}`}
+              </div>
+              <div style={{ fontSize: 12, color: tokens.colors.textMuted }}>
+                ID: {foundUser.userId} · Роль: {foundUser.role}
+              </div>
+            </div>
+            <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
               <Button onClick={() => setFoundUser(null)}>Назад</Button>
               <Button type="primary" loading={confirmLoading} onClick={handleConfirmAdd}>
                 Добавить

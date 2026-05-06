@@ -20,4 +20,11 @@ class UploadController(private val fileStorageService: FileStorageService) {
         val path = fileStorageService.saveClubImage(file)
         return UploadResponse(path)
     }
+
+    @PostMapping("/product-image", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    @PreAuthorize("hasRole('GLOBAL_ADMIN')")
+    fun uploadProductImage(@RequestPart("file") file: MultipartFile): UploadResponse {
+        val path = fileStorageService.saveProductImage(file)
+        return UploadResponse(path)
+    }
 }

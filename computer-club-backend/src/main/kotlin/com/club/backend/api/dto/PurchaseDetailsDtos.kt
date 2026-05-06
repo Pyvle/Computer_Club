@@ -3,6 +3,7 @@ package com.club.backend.api.dto
 data class PurchaseDetailsResponse(
     val purchaseId: Long,
     val clubId: Long,
+    val clubName: String,
     val createdAt: String,
     val paymentStatus: String,
     val bookingItems: List<BookingItemResponse>,
@@ -18,11 +19,13 @@ data class BookingItemResponse(
     val endAt: String,
     val seatIds: List<Long>,
     val seatLabels: List<String>,
-    val totalRub: Int
+    val totalRub: Int,
+    val rateRubPerHourSnapshot: Int,
+    val packageHours: Int?
 )
 
 data class ProductItemResponse(
-    val productId: Long,
+    val productId: Long?,
     val name: String,
     val qty: Int,
     val unitRub: Int,

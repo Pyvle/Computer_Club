@@ -18,18 +18,18 @@ fun AppScaffold(
     content: @Composable () -> Unit
 ) {
     val showBottomBar = route.startsWith(Routes.Clubs) ||
-            route.startsWith(Routes.Booking) ||
-            route.startsWith(Routes.BookingSeats) ||
-            route.startsWith(Routes.Shop) ||
-            route.startsWith(Routes.Cart) ||
-            route.startsWith(Routes.History) ||
-            route.startsWith(Routes.Profile) ||
-            route.startsWith(Routes.About)
+        route.startsWith(Routes.Booking) ||
+        route.startsWith(Routes.BookingSeats) ||
+        route.startsWith(Routes.Shop) ||
+        route.startsWith(Routes.Cart) ||
+        route.startsWith(Routes.History) ||
+        route.startsWith(Routes.Profile) ||
+        route.startsWith(Routes.About)
 
-    // Топбар скрываем на "Клубы" и "Корзина"
+    // топбар скрываем на "Клубы" и "Корзина"
     val showTopBar = showBottomBar &&
-            !route.startsWith(Routes.Clubs) &&
-            !route.startsWith(Routes.Cart)
+        !route.startsWith(Routes.Clubs) &&
+        !route.startsWith(Routes.Cart)
 
     // одинаковая top-level навигация для вкладок
     fun topLevelNavigate(dest: String) {
@@ -48,7 +48,6 @@ fun AppScaffold(
                     route.startsWith("club_details") -> "Клуб"
                     route.startsWith(Routes.Booking) -> "Бронирование"
                     route.startsWith(Routes.BookingSeats) -> "Бронирование"
-                    route.startsWith(Routes.ShopSearch) -> "Поиск"
                     route.startsWith(Routes.Shop) -> "Товары и услуги"
                     route.startsWith(Routes.Cart) -> "Корзина"
                     route.startsWith(Routes.History) -> "История"
@@ -64,15 +63,16 @@ fun AppScaffold(
                         val safeFrom = when {
                             route.startsWith("club_details") -> Routes.Clubs
                             route.startsWith(Routes.BookingSeats) -> Routes.Booking
-                            route.startsWith(Routes.ShopSearch) -> Routes.Shop
                             else -> route.substringBefore("?")
                         }
                         nav.navigate("login_phone?from=$safeFrom")
                     },
                     hideAuthAction = route.startsWith(Routes.Profile),
-                    showBack = route.startsWith(Routes.BookingSeats) || route.startsWith(Routes.ShopSearch) || route.startsWith(Routes.History) || route.startsWith(Routes.About),
+                    showBack = route.startsWith(Routes.BookingSeats) ||
+                        route.startsWith(Routes.History) ||
+                        route.startsWith(Routes.About),
                     onBack = {
-                        if (route.startsWith(Routes.ShopSearch) || route.startsWith(Routes.History) || route.startsWith(Routes.About)) {
+                        if (route.startsWith(Routes.History) || route.startsWith(Routes.About)) {
                             nav.popBackStack()
                             return@ClubTopBar
                         }
@@ -87,7 +87,6 @@ fun AppScaffold(
             if (showBottomBar) {
                 val current = when {
                     route.startsWith(Routes.BookingSeats) -> Routes.Booking
-                    route.startsWith(Routes.ShopSearch) -> Routes.Shop
                     route.startsWith(Routes.History) -> Routes.Profile
                     route.startsWith(Routes.About) -> Routes.Profile
                     else -> route.substringBefore("?")
@@ -96,7 +95,7 @@ fun AppScaffold(
                 ClubBottomBar(
                     currentRoute = current,
                     onNavigate = { dest ->
-                        // история открыта поверх профиля — кнопка Профиль просто возвращает назад
+                        // история открыта поверх профиля — кнопка профиль просто возвращает назад
                         if (route.startsWith(Routes.History) && dest == Routes.Profile) {
                             nav.popBackStack()
                             return@ClubBottomBar

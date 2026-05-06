@@ -165,7 +165,9 @@ fun BookingSeatsScreen(
                 ) {
                     Icon(
                         imageVector = if (isFav) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                        contentDescription = "Избранное"
+                        contentDescription = "Избранное",
+                        tint = if (isFav) com.example.computerclub.ui.theme.BrandIndigo
+                               else com.example.computerclub.ui.theme.TextMuted
                     )
                 }
             }
@@ -183,10 +185,10 @@ fun BookingSeatsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .clip(RoundedCornerShape(18.dp))
+                        .clip(com.example.computerclub.ui.theme.ShapeXL)
                         .border(
-                            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            RoundedCornerShape(18.dp)
+                            BorderStroke(1.dp, com.example.computerclub.ui.theme.AppBorder),
+                            com.example.computerclub.ui.theme.ShapeXL
                         )
                 ) {
                     val planW = maxWidth
@@ -406,7 +408,8 @@ fun BookingSeatsScreen(
                 )
             }
 
-            Button(
+            com.example.computerclub.ui.components.AppPrimaryButton(
+                text = "В корзину",
                 onClick = {
                     appVm.commitCurrentBookingToCartAsync { res ->
                         if (res.ok) {
@@ -418,14 +421,9 @@ fun BookingSeatsScreen(
                         }
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                enabled = draft.selectedSeatIds.isNotEmpty(),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text("В корзину", style = MaterialTheme.typography.titleMedium)
-            }
+                modifier = Modifier.fillMaxWidth(),
+                enabled = draft.selectedSeatIds.isNotEmpty()
+            )
         }
     }
 
@@ -446,12 +444,12 @@ fun BookingSeatsScreen(
     }
 
     // --- Диалог long-press по месту ---
-    if (seatInfo != null) {
+    seatInfo?.let { info ->
         AlertDialog(
             onDismissRequest = { seatInfo = null },
             confirmButton = { TextButton(onClick = { seatInfo = null }) { Text("Ок") } },
             title = { Text("Информация о месте") },
-            text = { Text(seatInfo!!) }
+            text = { Text(info) }
         )
     }
 }
@@ -476,7 +474,7 @@ private fun SeatsInfoSheet(specs: List<com.example.computerclub.data.network.dto
             )
         } else {
             specs.forEach { spec ->
-                Card(shape = RoundedCornerShape(16.dp)) {
+                com.example.computerclub.ui.components.AppCard {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(spec.title, style = MaterialTheme.typography.titleMedium)
                         spec.specs.forEach { line ->
@@ -512,7 +510,7 @@ private fun SeatsMaxTimeSheet(rows: List<SeatMaxTimeRow>) {
 
         if (vip.isNotEmpty()) {
             Text("VIP", style = MaterialTheme.typography.titleMedium)
-            Card(shape = RoundedCornerShape(16.dp)) {
+            com.example.computerclub.ui.components.AppCard {
                 Column(Modifier.padding(vertical = 6.dp)) {
                     vip.forEach { r -> MaxTimeRow(r) }
                 }
@@ -521,7 +519,7 @@ private fun SeatsMaxTimeSheet(rows: List<SeatMaxTimeRow>) {
 
         if (std.isNotEmpty()) {
             Text("СТАНДАРТ", style = MaterialTheme.typography.titleMedium)
-            Card(shape = RoundedCornerShape(16.dp)) {
+            com.example.computerclub.ui.components.AppCard {
                 Column(Modifier.padding(vertical = 6.dp)) {
                     std.forEach { r -> MaxTimeRow(r) }
                 }
@@ -578,13 +576,25 @@ private fun SeatSquare(
     val shape = RoundedCornerShape(10.dp)
 
     val (bg, border, textColor) = when (kind) {
-        SeatKind.SELECTED -> Triple(cs.primary, cs.primary, cs.onPrimary)
-        SeatKind.BOOKED -> Triple(cs.surfaceVariant, cs.outlineVariant, cs.onSurfaceVariant)
-        SeatKind.FREE -> Triple(cs.surface, cs.outline, cs.onSurface)
+        SeatKind.SELECTED -> Triple(
+            com.example.computerclub.ui.theme.BrandIndigo,
+            com.example.computerclub.ui.theme.BrandIndigo,
+            Color.White
+        )
+        SeatKind.BOOKED -> Triple(
+            com.example.computerclub.ui.theme.AppSurfaceAlt,
+            com.example.computerclub.ui.theme.AppBorder,
+            com.example.computerclub.ui.theme.TextMuted
+        )
+        SeatKind.FREE -> Triple(
+            com.example.computerclub.ui.theme.BrandIndigoSoft,
+            com.example.computerclub.ui.theme.BrandIndigo,
+            com.example.computerclub.ui.theme.BrandIndigo
+        )
     }
 
-    val monitorColor = if (kind == SeatKind.SELECTED) cs.onPrimary.copy(alpha = 0.85f)
-                       else cs.onSurface.copy(alpha = 0.18f)
+    val monitorColor = if (kind == SeatKind.SELECTED) Color.White.copy(alpha = 0.85f)
+                       else com.example.computerclub.ui.theme.AppBorder
 
     Box(
         modifier
@@ -633,7 +643,7 @@ private fun MapControlsCompact(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = com.example.computerclub.ui.theme.ShapeLarge,
         tonalElevation = 2.dp,
         color = MaterialTheme.colorScheme.surface
     ) {
@@ -665,7 +675,9 @@ private fun SmallSquareButtonCompact(text: String, onClick: () -> Unit) {
         onClick = onClick,
         contentPadding = PaddingValues(0.dp),
         modifier = Modifier.size(36.dp),
-        shape = RoundedCornerShape(10.dp)
+        shape = com.example.computerclub.ui.theme.ShapeSmall,
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = com.example.computerclub.ui.theme.BrandIndigo),
+        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.computerclub.ui.theme.AppBorder)
     ) {
         Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     }

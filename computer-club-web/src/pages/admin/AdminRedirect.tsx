@@ -8,16 +8,19 @@ export default function AdminRedirect() {
 
   useEffect(() => {
     async function redirect() {
-      const ctx = user ?? await loadContext()
-
-      if (ctx.globalRole === 'GLOBAL_ADMIN') {
-        navigate('/admin/platform/applications', { replace: true })
-        return
+      try {
+        const ctx = user ?? await loadContext()
+        if (ctx.globalRole === 'GLOBAL_ADMIN') {
+          navigate('/admin/platform/applications', { replace: true })
+        } else {
+          navigate('/admin/my-clubs', { replace: true })
+        }
+      } catch {
+        navigate('/login', { replace: true })
       }
-      navigate('/admin/my-clubs', { replace: true })
     }
     redirect()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return null
 }

@@ -18,6 +18,8 @@ import {
   Flex,
   Tabs,
 } from 'antd'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
 import type { ColumnsType } from 'antd/es/table'
 import {
   PlusOutlined,
@@ -37,6 +39,8 @@ import {
   AdminSeatPriceResponse,
   UpsertSeatPriceRequest,
 } from '../../types'
+
+type TimePackageRow = AdminTimePackageResponse & { _standard?: true }
 
 // ─── Seat prices tab ────────────────────────────────────────────────────────
 
@@ -268,7 +272,7 @@ function TimePackagesTab({ clubId }: { clubId: string }) {
     _standard: true,
   }
 
-  const displayed = [
+  const displayed: TimePackageRow[] = [
     ...(standardPrice != null ? [standardRow] : []),
     ...(showInactive ? packages : packages.filter((p) => p.isActive)),
   ]
@@ -357,7 +361,7 @@ function TimePackagesTab({ clubId }: { clubId: string }) {
     }
   }
 
-  const columns: ColumnsType<AdminTimePackageResponse & { _standard?: true }> = [
+  const columns: ColumnsType<TimePackageRow> = [
     {
       title: 'Название',
       dataIndex: 'name',
@@ -531,22 +535,24 @@ export default function ClubTimePackagesPage() {
 
   return (
     <div>
-      <Typography.Title level={3} style={{ marginBottom: 16 }}>Пакеты времени</Typography.Title>
-      <Tabs
-        defaultActiveKey="packages"
-        items={[
-          {
-            key: 'packages',
-            label: 'Пакеты',
-            children: <TimePackagesTab clubId={clubId!} />,
-          },
-          {
-            key: 'seat-prices',
-            label: 'Цены за места',
-            children: <SeatPricesTab clubId={clubId!} />,
-          },
-        ]}
-      />
+      <PageHeader title="Тарифы" subtitle="Пакеты времени и почасовые цены на места" />
+      <SectionCard>
+        <Tabs
+          defaultActiveKey="packages"
+          items={[
+            {
+              key: 'packages',
+              label: 'Пакеты',
+              children: <TimePackagesTab clubId={clubId!} />,
+            },
+            {
+              key: 'seat-prices',
+              label: 'Цены за места',
+              children: <SeatPricesTab clubId={clubId!} />,
+            },
+          ]}
+        />
+      </SectionCard>
     </div>
   )
 }

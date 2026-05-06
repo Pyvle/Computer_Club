@@ -4,17 +4,28 @@ import {
   Alert,
   Button,
   Card,
+  Col,
   DatePicker,
   Input,
   message,
+  Row,
   Select,
   Segmented,
   Space,
   Spin,
-  Statistic,
   Table,
-  Tag,
 } from 'antd'
+import {
+  CalendarOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  CloseCircleOutlined,
+} from '@ant-design/icons'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
+import StatCard from '../../components/ui/StatCard'
+import StatusBadge from '../../components/ui/StatusBadge'
+import { tokens } from '../../theme/tokens'
 import type { ColumnsType } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
@@ -31,19 +42,6 @@ import type {
 
 // ─── Helpers: list view ──────────────────────────────────────────────────────
 
-const STATUS_LABELS: Record<BookingStatus, string> = {
-  UPCOMING: 'Предстоящее',
-  ACTIVE: 'Активное',
-  DONE: 'Завершено',
-  CANCELED: 'Отменено',
-}
-
-const STATUS_COLORS: Record<BookingStatus, string> = {
-  UPCOMING: 'blue',
-  ACTIVE: 'success',
-  DONE: 'default',
-  CANCELED: 'error',
-}
 
 function formatDuration(hours: number): string {
   const h = Math.floor(hours)
@@ -64,11 +62,14 @@ const GAP = 2
 const PADDING = 8
 const WALL_THICKNESS = 4
 const MIN_CELL_PX = 40
+const MIN_ZOOM = 0.35
+const MAX_ZOOM = 8
+const ZOOM_STEP = 0.25
 
 // цвета состояний мест
 const SEAT_COLORS: Record<SeatState, { bg: string; border: string; text: string }> = {
-  FREE:        { bg: '#f6ffed', border: '#52c41a', text: '#237804' },
-  OCCUPIED:    { bg: '#fff1f0', border: '#ff4d4f', text: '#cf1322' },
+  FREE:        { bg: tokens.colors.successSoft, border: tokens.colors.success, text: tokens.colors.success },
+  OCCUPIED:    { bg: tokens.colors.errorSoft,   border: tokens.colors.error,   text: tokens.colors.error },
   UNAVAILABLE: { bg: '#bfbfbf', border: '#8c8c8c', text: '#fff' },
 }
 const FLOOR_BG: Record<RoomType, string> = { REGULAR: '#ffffff', VIP: '#fff8e6' }
@@ -117,6 +118,14 @@ function getSeatState(seatId: number, seatById: Map<number, AdminSeatResponse>, 
   return 'FREE'
 }
 
+function clampZoom(value: number) {
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Number.isFinite(value) ? value : 1))
+}
+
+function formatZoomLabel(value: number) {
+  return `${Math.round(value * 100)}%`
+}
+
 // ─── FloorplanViewer ─────────────────────────────────────────────────────────
 
 interface ViewerProps {
@@ -131,8 +140,10 @@ function FloorplanViewer({ floorplan, seatById, bookingBySeatId, selectedSeatId,
   const { width, height, gridSize } = floorplan
   const cols = Math.max(1, Math.floor(width / gridSize))
   const rows = Math.max(1, Math.floor(height / gridSize))
-  const defaultZoom = Math.max(1, Math.ceil(MIN_CELL_PX / gridSize))
-  const [zoom, setZoom] = useState(defaultZoom)
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+  const [fitZoom, setFitZoom] = useState(1)
+  const [autoFit, setAutoFit] = useState(true)
+  const [zoom, setZoom] = useState(1)
   const cellPx = gridSize * zoom
 
   const items = useMemo(
@@ -159,16 +170,64 @@ function FloorplanViewer({ floorplan, seatById, bookingBySeatId, selectedSeatId,
   const cLeft = (c: number) => PADDING + c * (cellPx + GAP)
   const cTop = (r: number) => PADDING + r * (cellPx + GAP)
 
+  useEffect(() => {
+    setAutoFit(true)
+  }, [floorplan.id, floorplan.version, cols, rows, gridSize])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+
+    const updateFitZoom = () => {
+      const availableWidth = Math.max(160, viewport.clientWidth - PADDING * 2)
+      const availableHeight = Math.max(160, viewport.clientHeight - PADDING * 2)
+      const fitByWidth = (availableWidth - Math.max(0, (cols - 1) * GAP)) / Math.max(1, cols * gridSize)
+      const fitByHeight = (availableHeight - Math.max(0, (rows - 1) * GAP)) / Math.max(1, rows * gridSize)
+      const preferredZoom = Math.max(1, MIN_CELL_PX / gridSize)
+      const nextFitZoom = clampZoom(Math.min(preferredZoom, fitByWidth, fitByHeight))
+
+      setFitZoom(nextFitZoom)
+      if (autoFit) {
+        setZoom(nextFitZoom)
+      }
+    }
+
+    updateFitZoom()
+    const observer = new ResizeObserver(updateFitZoom)
+    observer.observe(viewport)
+    return () => observer.disconnect()
+  }, [autoFit, cols, rows, gridSize])
+
   return (
     <div>
-      <div style={{ marginBottom: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
-        <Button size="small" onClick={() => setZoom(z => Math.max(1, z - 1))}>−</Button>
-        <span style={{ fontSize: 12, color: '#666', minWidth: 22, textAlign: 'center' }}>{zoom}×</span>
-        <Button size="small" onClick={() => setZoom(z => Math.min(8, z + 1))}>+</Button>
-        <Button size="small" onClick={() => setZoom(defaultZoom)}>сброс</Button>
+      {/* Легенда + управление зумом в одну строку */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 14 }}>
+          {(Object.entries(SEAT_COLORS) as [SeatState, typeof SEAT_COLORS[SeatState]][]).map(([state, c]) => (
+            <span key={state} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: tokens.colors.textSecondary }}>
+              <span style={{ display: 'inline-block', width: 13, height: 13, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 3 }} />
+              {{ FREE: 'Свободно', OCCUPIED: 'Занято', UNAVAILABLE: 'Недоступно' }[state]}
+            </span>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <Button size="small" onClick={() => {
+            setAutoFit(false)
+            setZoom((z) => clampZoom(z - ZOOM_STEP))
+          }}>−</Button>
+          <span style={{ fontSize: 12, color: tokens.colors.textSecondary, minWidth: 44, textAlign: 'center' }}>{formatZoomLabel(zoom)}</span>
+          <Button size="small" onClick={() => {
+            setAutoFit(false)
+            setZoom((z) => clampZoom(z + ZOOM_STEP))
+          }}>+</Button>
+          <Button size="small" onClick={() => {
+            setAutoFit(true)
+            setZoom(fitZoom)
+          }}>целиком</Button>
+        </div>
       </div>
 
-      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 360px)', border: '1px solid #d9d9d9', borderRadius: 6, background: VOID_BG }}>
+      <div ref={viewportRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 360px)', border: `1px solid ${tokens.colors.border}`, borderRadius: tokens.radius.sm, background: VOID_BG }}>
         <div style={{ position: 'relative', display: 'inline-block', padding: PADDING, minWidth: '100%', boxSizing: 'border-box' }}>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, ${cellPx}px)`, gap: GAP }}>
             {Array.from({ length: rows * cols }, (_, i) => {
@@ -184,7 +243,7 @@ function FloorplanViewer({ floorplan, seatById, bookingBySeatId, selectedSeatId,
               const colors = state ? SEAT_COLORS[state] : null
 
               const bgColor = colors ? colors.bg : isVoid ? VOID_BG : floorCell ? FLOOR_BG[floorCell.roomType] : FLOOR_BG.REGULAR
-              const borderColor = isSelected ? '#1677ff' : colors ? colors.border : '#d9d9d9'
+              const borderColor = isSelected ? tokens.colors.info : colors ? colors.border : tokens.colors.border
               const borderWidth = isSelected ? 2 : 1
               const seat = seatId !== null ? seatById.get(seatId) : undefined
 
@@ -202,7 +261,7 @@ function FloorplanViewer({ floorplan, seatById, bookingBySeatId, selectedSeatId,
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                     gap: 1, userSelect: 'none', overflow: 'hidden',
                     opacity: isVoid ? 0.5 : state === 'UNAVAILABLE' ? 0.7 : 1,
-                    boxShadow: isSelected ? '0 0 0 2px rgba(22,119,255,0.2)' : seatId ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                    boxShadow: isSelected ? `0 0 0 2px ${tokens.colors.infoSoft}` : seatId ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
                   }}
                 >
                   {seatId !== null && cellPx >= 28 && colors && (
@@ -236,15 +295,6 @@ function FloorplanViewer({ floorplan, seatById, bookingBySeatId, selectedSeatId,
         </div>
       </div>
 
-      {/* Легенда */}
-      <div style={{ display: 'flex', gap: 14, marginTop: 10 }}>
-        {(Object.entries(SEAT_COLORS) as [SeatState, typeof SEAT_COLORS[SeatState]][]).map(([state, c]) => (
-          <span key={state} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#666' }}>
-            <span style={{ display: 'inline-block', width: 12, height: 12, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 2 }} />
-            {{ FREE: 'Свободно', OCCUPIED: 'Занято', UNAVAILABLE: 'Недоступно' }[state]}
-          </span>
-        ))}
-      </div>
     </div>
   )
 }
@@ -262,68 +312,117 @@ const PAYMENT_LABELS: Record<string, { label: string; color: string }> = {
 interface InfoPanelProps {
   seat: AdminSeatResponse
   booking: FloorplanBookingEntry | undefined
-  clubId: string
   onNavigate: (bookingId: number) => void
 }
 
-function InfoPanel({ seat, booking, clubId, onNavigate }: InfoPanelProps) {
+function InfoPanel({ seat, booking, onNavigate }: InfoPanelProps) {
   const state: SeatState = !seat.isActive ? 'UNAVAILABLE' : booking ? 'OCCUPIED' : 'FREE'
   const payment = booking?.paymentStatus ? PAYMENT_LABELS[booking.paymentStatus] : null
 
+  const stateStyle: Record<SeatState, { bg: string; color: string; label: string }> = {
+    FREE:        { bg: tokens.colors.successSoft, color: tokens.colors.success, label: 'Свободно' },
+    OCCUPIED:    { bg: tokens.colors.errorSoft,   color: tokens.colors.error,   label: 'Занято' },
+    UNAVAILABLE: { bg: '#f5f5f5',                 color: tokens.colors.textMuted, label: 'Неактивно' },
+  }
+  const ss = stateStyle[state]
+
   return (
-    <div>
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>{seat.label}</div>
-        <div style={{ fontSize: 12, color: '#888' }}>Тип: {seat.type === 'VIP' ? 'VIP' : 'Обычное'}</div>
+    <div style={{ fontSize: 13 }}>
+      {/* Заголовок места */}
+      <div style={{
+        background: ss.bg,
+        borderRadius: tokens.radius.sm,
+        padding: '12px 14px',
+        marginBottom: 14,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: tokens.colors.text, lineHeight: 1 }}>
+            {seat.label}
+          </div>
+          <div style={{ fontSize: 11, color: tokens.colors.textMuted, marginTop: 3 }}>
+            {seat.type === 'VIP' ? 'VIP' : 'Стандартное'}
+          </div>
+        </div>
+        <div style={{
+          fontSize: 11, fontWeight: 700,
+          color: ss.color,
+          background: 'white',
+          border: `1.5px solid ${ss.color}`,
+          borderRadius: 20,
+          padding: '3px 10px',
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+        }}>
+          {ss.label}
+        </div>
       </div>
 
-      {state === 'UNAVAILABLE' && (
-        <Tag color="default" style={{ fontSize: 13 }}>Недоступно</Tag>
+      {/* Пустые состояния */}
+      {state !== 'OCCUPIED' && (
+        <div style={{ color: tokens.colors.textMuted, textAlign: 'center', padding: '12px 0', fontSize: 13 }}>
+          {state === 'FREE' ? 'Место свободно' : 'Место не используется'}
+        </div>
       )}
 
-      {state === 'FREE' && (
-        <Tag color="success" style={{ fontSize: 13 }}>✓ Свободно</Tag>
-      )}
-
+      {/* Активная бронь */}
       {state === 'OCCUPIED' && booking && (
-        <div>
-          <Tag color="error" style={{ fontSize: 13, marginBottom: 12 }}>Занято</Tag>
-
-          <div style={{ fontSize: 13, marginBottom: 6 }}>
-            <span style={{ color: '#888' }}>Бронь</span>{' '}
-            <strong>#{booking.bookingId}</strong>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Время — главный блок */}
+          <div style={{
+            background: tokens.colors.errorSoft,
+            border: `1px solid ${tokens.colors.error}30`,
+            borderRadius: tokens.radius.sm,
+            padding: '10px 14px',
+          }}>
+            <div style={{ fontSize: 11, color: tokens.colors.textMuted, marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Время сеанса
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: tokens.colors.text, lineHeight: 1 }}>
+              {dayjs(booking.startAt).format('HH:mm')}
+              <span style={{ fontWeight: 400, color: tokens.colors.textMuted, fontSize: 16 }}> — </span>
+              {dayjs(booking.endAt).format('HH:mm')}
+            </div>
+            <div style={{ fontSize: 11, color: tokens.colors.textMuted, marginTop: 4 }}>
+              {dayjs(booking.startAt).format('DD.MM.YYYY')}
+            </div>
           </div>
 
-          {booking.userPhone && (
-            <div style={{ fontSize: 13, marginBottom: 6 }}>
-              <span style={{ color: '#888' }}>Пользователь</span><br />
-              <strong>{booking.userPhone}</strong>
+          {/* Детали */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: tokens.colors.textMuted }}>Бронь</span>
+              <span style={{ fontWeight: 700 }}>#{booking.bookingId}</span>
             </div>
-          )}
 
-          <div style={{ fontSize: 13, marginBottom: 6 }}>
-            <span style={{ color: '#888' }}>Время</span><br />
-            <strong>
-              {dayjs(booking.startAt).format('HH:mm')} — {dayjs(booking.endAt).format('HH:mm')}
-            </strong>
-            <span style={{ color: '#888', fontSize: 12 }}>
-              {' '}({dayjs(booking.startAt).format('DD.MM')})
-            </span>
+            {booking.userPhone && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: tokens.colors.textMuted }}>Пользователь</span>
+                <span style={{ fontWeight: 600 }}>{booking.userPhone}</span>
+              </div>
+            )}
+
+            {payment && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: tokens.colors.textMuted }}>Оплата</span>
+                <StatusBadge
+                  label={payment.label}
+                  variant={payment.color === 'success' ? 'success' : payment.color === 'error' ? 'error' : payment.color === 'warning' ? 'warning' : 'info'}
+                />
+              </div>
+            )}
           </div>
-
-          {payment && (
-            <div style={{ fontSize: 13, marginBottom: 12 }}>
-              <span style={{ color: '#888' }}>Оплата</span>{' '}
-              <Tag color={payment.color}>{payment.label}</Tag>
-            </div>
-          )}
 
           <Button
             type="primary"
             block
+            size="large"
+            style={{ marginTop: 4 }}
             onClick={() => onNavigate(booking.bookingId)}
           >
-            Открыть бронь
+            Открыть бронь →
           </Button>
         </div>
       )}
@@ -504,19 +603,30 @@ function FloorplanTab({ clubId }: { clubId: string }) {
           </div>
 
           {/* Панель информации о месте */}
-          <div style={{ width: 260, flexShrink: 0 }}>
-            <Card size="small" style={{ minHeight: 220 }}>
+          <div style={{ width: 280, flexShrink: 0 }}>
+            <Card
+              style={{ minHeight: 260, borderColor: tokens.colors.border }}
+              styles={{ body: { padding: 0 } }}
+            >
               {!selectedSeat ? (
-                <div style={{ textAlign: 'center', color: '#bbb', padding: '32px 0', fontSize: 13 }}>
+                <div style={{
+                  textAlign: 'center',
+                  color: tokens.colors.textMuted,
+                  padding: '40px 16px',
+                  fontSize: 13,
+                  lineHeight: 1.6,
+                }}>
+                  <div style={{ fontSize: 28, marginBottom: 10, opacity: 0.4 }}>⊙</div>
                   Нажмите на место<br />для просмотра информации
                 </div>
               ) : (
-                <InfoPanel
-                  seat={selectedSeat}
-                  booking={selectedBooking}
-                  clubId={clubId}
-                  onNavigate={id => navigate(`/admin/club/${clubId}/bookings/${id}`)}
-                />
+                <div style={{ padding: 14 }}>
+                  <InfoPanel
+                    seat={selectedSeat}
+                    booking={selectedBooking}
+                    onNavigate={id => navigate(`/admin/club/${clubId}/bookings/${id}`)}
+                  />
+                </div>
               )}
             </Card>
           </div>
@@ -539,6 +649,21 @@ export default function ClubBookingsPage() {
   const [searchText, setSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState<BookingStatus | null>(null)
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null)
+  const [activeQuick, setActiveQuick] = useState<string>('ALL')
+
+  function applyQuickFilter(qf: string) {
+    setActiveQuick(qf)
+    switch (qf) {
+      case 'ACTIVE':    setStatusFilter('ACTIVE');    setDateRange(null); break
+      case 'UPCOMING':  setStatusFilter('UPCOMING');  setDateRange(null); break
+      case 'CANCELED':  setStatusFilter('CANCELED');  setDateRange(null); break
+      case 'TODAY':
+        setStatusFilter(null)
+        setDateRange([dayjs().startOf('day'), dayjs().endOf('day')])
+        break
+      default:          setStatusFilter(null);        setDateRange(null); break
+    }
+  }
 
   const fetchBookings = useCallback(async () => {
     if (!clubId) return
@@ -578,19 +703,25 @@ export default function ClubBookingsPage() {
   }), [filtered])
 
   const columns: ColumnsType<AdminBookingResponse> = [
-    { title: 'ID', dataIndex: 'id', key: 'id', width: 70 },
+    { title: 'ID', dataIndex: 'id', key: 'id', width: 70, sorter: (a, b) => Number(a.id) - Number(b.id) },
     { title: 'Пользователь', key: 'user', render: (_, r) => r.userPhone ?? `#${r.userId}`, width: 150 },
     { title: 'Места', key: 'seats', render: (_, r) => r.seatLabels.length <= 3 ? r.seatLabels.join(', ') || '—' : `${r.seatLabels.slice(0, 3).join(', ')} +${r.seatLabels.length - 3}` },
     { title: 'Начало', key: 'startAt', render: (_, r) => new Date(r.startAt).toLocaleString('ru-RU'), width: 160 },
     { title: 'Конец', key: 'endAt', render: (_, r) => new Date(r.endAt).toLocaleString('ru-RU'), width: 160 },
     { title: 'Длит.', key: 'dur', render: (_, r) => formatDuration(r.durationHours), width: 100 },
     { title: 'Сумма', key: 'total', render: (_, r) => `${r.totalRub} ₽`, width: 90 },
-    { title: 'Статус', key: 'status', render: (_, r) => <Tag color={STATUS_COLORS[r.status]}>{STATUS_LABELS[r.status]}</Tag>, width: 140 },
+    {
+      title: 'Статус', key: 'status', width: 140,
+      render: (_, r) => {
+        const { label, variant } = { UPCOMING: { label: 'Предстоящее', variant: 'info' as const }, ACTIVE: { label: 'Активное', variant: 'success' as const }, DONE: { label: 'Завершено', variant: 'default' as const }, CANCELED: { label: 'Отменено', variant: 'error' as const } }[r.status] ?? { label: r.status, variant: 'default' as const }
+        return <StatusBadge label={label} variant={variant} />
+      },
+    },
     {
       title: 'Покупка', key: 'purchase', width: 90,
       render: (_, r) => r.purchaseId
         ? <Button type="link" size="small" style={{ padding: 0 }} onClick={() => navigate(`/admin/club/${clubId}/purchases/${r.purchaseId}`)}>#{r.purchaseId}</Button>
-        : <span style={{ color: '#999' }}>—</span>,
+        : <span style={{ color: tokens.colors.textMuted }}>—</span>,
     },
     {
       title: '', key: 'actions', width: 90,
@@ -599,34 +730,118 @@ export default function ClubBookingsPage() {
   ]
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Бронирования</h2>
-        <Segmented
-          value={view}
-          onChange={v => setView(v as 'list' | 'floorplan')}
-          options={[{ value: 'list', label: 'Список' }, { value: 'floorplan', label: 'Схема зала' }]}
-        />
-      </div>
+    <div>
+      <PageHeader
+        title="Бронирования"
+        extra={
+          <Segmented
+            value={view}
+            onChange={v => setView(v as 'list' | 'floorplan')}
+            options={[{ value: 'list', label: 'Список' }, { value: 'floorplan', label: 'Схема зала' }]}
+          />
+        }
+      />
 
       {view === 'list' ? (
         <>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-            {([['Всего', stats.total, undefined], ['Предстоящие', stats.upcoming, '#1677ff'], ['Активные', stats.active, '#52c41a'], ['Завершённые', stats.done, undefined], ['Отменённые', stats.canceled, undefined]] as const).map(([title, value, color]) => (
-              <Card key={title} size="small" style={{ flex: 1, minWidth: 110 }}>
-                <Statistic title={title} value={value} valueStyle={color ? { color } : undefined} />
-              </Card>
-            ))}
+          {/* Мини-статистика */}
+          <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+            <Col xs={12} sm={8} md={4}>
+              <StatCard label="Всего" value={stats.total} />
+            </Col>
+            <Col xs={12} sm={8} md={5}>
+              <StatCard label="Предстоящие" value={stats.upcoming} icon={<ClockCircleOutlined />} accentColor={tokens.colors.info} />
+            </Col>
+            <Col xs={12} sm={8} md={5}>
+              <StatCard label="Активные" value={stats.active} icon={<CalendarOutlined />} accentColor={tokens.colors.success} />
+            </Col>
+            <Col xs={12} sm={8} md={5}>
+              <StatCard label="Завершённые" value={stats.done} icon={<CheckCircleOutlined />} accentColor={tokens.colors.textSecondary} />
+            </Col>
+            <Col xs={12} sm={8} md={5}>
+              <StatCard label="Отменённые" value={stats.canceled} icon={<CloseCircleOutlined />} accentColor={tokens.colors.error} />
+            </Col>
+          </Row>
+
+          {/* Sticky панель фильтров */}
+          <div style={{ position: 'sticky', top: 0, zIndex: 9, background: tokens.colors.background, paddingBottom: 12 }}>
+            <SectionCard>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                {/* Быстрые фильтры */}
+                <Space size={4}>
+                  {([
+                    { value: 'ALL',      label: 'Все' },
+                    { value: 'ACTIVE',   label: 'Активные' },
+                    { value: 'UPCOMING', label: 'Предстоящие' },
+                    { value: 'TODAY',    label: 'Сегодня' },
+                    { value: 'CANCELED', label: 'Отменённые' },
+                  ] as const).map(qf => (
+                    <Button
+                      key={qf.value}
+                      size="small"
+                      type={activeQuick === qf.value ? 'primary' : 'default'}
+                      onClick={() => applyQuickFilter(qf.value)}
+                    >
+                      {qf.label}
+                    </Button>
+                  ))}
+                </Space>
+
+                {/* Разделитель */}
+                <div style={{ width: 1, height: 22, background: tokens.colors.border, flexShrink: 0 }} />
+
+                {/* Поиск + дата + статус */}
+                <Input.Search
+                  placeholder="ID, телефон"
+                  allowClear
+                  size="small"
+                  style={{ width: 180 }}
+                  value={searchText}
+                  onChange={e => setSearchText(e.target.value)}
+                />
+                <DatePicker.RangePicker
+                  size="small"
+                  showTime
+                  value={dateRange}
+                  onChange={val => {
+                    setDateRange(val as [Dayjs, Dayjs] | null)
+                    setActiveQuick('ALL')
+                  }}
+                />
+                <Select
+                  size="small"
+                  style={{ width: 160 }}
+                  placeholder="Все статусы"
+                  allowClear
+                  value={statusFilter}
+                  onChange={v => {
+                    setStatusFilter(v ?? null)
+                    setActiveQuick('ALL')
+                  }}
+                  options={[
+                    { value: 'UPCOMING', label: 'Предстоящие' },
+                    { value: 'ACTIVE',   label: 'Активные' },
+                    { value: 'DONE',     label: 'Завершённые' },
+                    { value: 'CANCELED', label: 'Отменённые' },
+                  ]}
+                />
+              </div>
+            </SectionCard>
           </div>
 
-          <Space wrap style={{ marginBottom: 16 }}>
-            <Input.Search placeholder="ID, телефон" allowClear style={{ width: 200 }} value={searchText} onChange={e => setSearchText(e.target.value)} />
-            <DatePicker.RangePicker showTime onChange={val => setDateRange(val as [Dayjs, Dayjs] | null)} />
-            <Select style={{ width: 180 }} placeholder="Все статусы" allowClear value={statusFilter} onChange={v => setStatusFilter(v ?? null)}
-              options={[{ value: 'UPCOMING', label: 'Предстоящие' }, { value: 'ACTIVE', label: 'Активные' }, { value: 'DONE', label: 'Завершённые' }, { value: 'CANCELED', label: 'Отменённые' }]} />
-          </Space>
-
-          <Table columns={columns} dataSource={filtered} rowKey="id" loading={loading} pagination={{ pageSize: 20, showSizeChanger: false }} />
+          <SectionCard noPadding>
+            <Table
+              columns={columns}
+              dataSource={filtered}
+              rowKey="id"
+              loading={loading}
+              pagination={{ pageSize: 20, showSizeChanger: false }}
+              rowClassName={(r: AdminBookingResponse) =>
+                r.status === 'ACTIVE'   ? 'booking-row-active' :
+                r.status === 'CANCELED' ? 'booking-row-canceled' : ''
+              }
+            />
+          </SectionCard>
         </>
       ) : (
         clubId ? <FloorplanTab clubId={clubId} /> : null

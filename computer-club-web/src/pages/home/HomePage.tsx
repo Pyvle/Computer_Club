@@ -8,12 +8,12 @@ export default function HomePage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 64px)', padding: 24 }}>
-      <Title>Добро пожаловать в Computer Club</Title>
+      <Title>Добро пожаловать в Компьютерный клуб</Title>
       <Paragraph type="secondary" style={{ fontSize: 16, marginBottom: 32 }}>
         Сеть компьютерных клубов — бронирование, магазин, личный кабинет
       </Paragraph>
       <Space size="large">
-        <Button type="primary" size="large" onClick={() => navigate('/login')}>
+        <Button type="primary" size="large" onClick={() => navigate('/clubs')}>
           Войти
         </Button>
         <Button size="large" onClick={() => navigate('/login?partner=1')}>

@@ -2,6 +2,8 @@ package com.club.backend.api.controller.admin
 
 import com.club.backend.api.dto.ClubUserReportResponse
 import com.club.backend.api.dto.PlatformMessageResponse
+import com.club.backend.api.dto.UpdateReportStatusRequest
+import com.club.backend.domain.enum.ClubReportStatus
 import com.club.backend.api.dto.admin.AdminBookingDetailResponse
 import com.club.backend.api.dto.admin.AdminBookingResponse
 import com.club.backend.api.dto.admin.AdminPurchaseDetailResponse
@@ -92,8 +94,20 @@ class ClubReportsAdminController(
 
     @GetMapping("/user-reports")
     @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_REPORTS_VIEW)")
-    fun userReports(@PathVariable clubId: Long): List<ClubUserReportResponse> =
-        clubUserReportService.getUserReports(clubId)
+    fun userReports(
+        @PathVariable clubId: Long,
+        @RequestParam(required = false) status: ClubReportStatus?
+    ): List<ClubUserReportResponse> =
+        clubUserReportService.getUserReports(clubId, status)
+
+    @PatchMapping("/user-reports/{reportId}/status")
+    @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_REPORTS_VIEW)")
+    fun updateReportStatus(
+        @PathVariable clubId: Long,
+        @PathVariable reportId: Long,
+        @RequestBody req: UpdateReportStatusRequest
+    ): ClubUserReportResponse =
+        clubUserReportService.updateStatus(clubId, reportId, req)
 
     @GetMapping("/platform-messages")
     @PreAuthorize("@rbac.hasClubPermission(authentication, #clubId, T(com.club.backend.domain.enum.ClubPermission).CLUB_REPORTS_VIEW)")

@@ -104,10 +104,6 @@ fun AppNav(appVm: AppViewModel) {
                 )
             }
 
-            composable(Routes.ShopSearch) {
-                ShopSearchScreen(appVm = appVm)
-            }
-
             composable(Routes.Cart) {
                 CartScreen(
                     appVm = appVm,
@@ -165,8 +161,7 @@ fun AppNav(appVm: AppViewModel) {
                 )
             }
 
-            composable(Routes.Notifications) { NotificationsScreen(appVm = appVm, nav = nav) }
-            composable(Routes.ProfileDetails) { ProfileDetailsScreen(appVm = appVm, nav = nav) }
+composable(Routes.ProfileDetails) { ProfileDetailsScreen(appVm = appVm, nav = nav) }
             composable(Routes.About) { AboutScreen() }
 
             composable(

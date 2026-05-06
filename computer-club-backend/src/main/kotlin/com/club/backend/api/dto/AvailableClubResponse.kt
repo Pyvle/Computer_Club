@@ -13,5 +13,6 @@ data class AvailableClubResponse(
     val blockReason: String?,
     val blockedUntil: LocalDateTime?,
     val latitude: Double?,
-    val longitude: Double?
+    val longitude: Double?,
+    val minPricePerHourRub: Int?
 )

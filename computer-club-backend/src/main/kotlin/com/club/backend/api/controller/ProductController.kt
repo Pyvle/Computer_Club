@@ -15,11 +15,9 @@ class ProductController(
     private val productService: ProductService
 ) {
 
-    private fun currentUserId(): Long {
-        val principal = SecurityContextHolder.getContext().authentication?.principal?.toString()
-            ?: throw IllegalArgumentException("Unauthorized")
-        return principal.toLong()
-    }
+    // null если запрос анонимный (путь в permitAll)
+    private fun currentUserIdOrNull(): Long? =
+        SecurityContextHolder.getContext().authentication?.principal?.toString()?.toLongOrNull()
 
     @GetMapping("/product-categories")
     fun getCategories(): List<ProductCategoryResponse> =
@@ -27,5 +25,5 @@ class ProductController(
 
     @GetMapping("/clubs/{clubId}/products")
     fun getClubProducts(@PathVariable clubId: Long): List<ClubProductResponse> =
-        productService.getClubMenu(currentUserId(), clubId)
+        productService.getClubMenu(currentUserIdOrNull(), clubId)
 }

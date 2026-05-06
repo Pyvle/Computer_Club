@@ -32,13 +32,16 @@ class SecurityConfig(
                     "/uploads/**",
                     // публичный каталог — просмотр без авторизации
                     "/api/v1/clubs",
+                    "/api/v1/clubs/*",
                     "/api/v1/product-categories",
                     "/api/v1/clubs/*/products",
                     "/api/v1/clubs/*/seats",
                     "/api/v1/clubs/*/seats/availability",
                     "/api/v1/clubs/*/floorplan",
                     "/api/v1/clubs/*/floorplan-with-availability",
-                    "/api/v1/clubs/*/seat-specs"
+                    "/api/v1/clubs/*/seat-specs",
+                    "/api/v1/clubs/*/time-packages",
+                    "/api/v1/clubs/*/seat-prices"
                 ).permitAll()
 
                 it.anyRequest().authenticated()

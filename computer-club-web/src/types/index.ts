@@ -46,6 +46,7 @@ export interface AdminProductResponse {
   categoryId: number
   title: string
   description: string | null
+  imageUrl: string | null
   isActive: boolean
 }
 
@@ -64,6 +65,7 @@ export interface CreateProductRequest {
   categoryId: number
   title: string
   description?: string
+  imageUrl?: string | null
   isActive: boolean
 }
 
@@ -71,6 +73,7 @@ export interface UpdateProductRequest {
   categoryId: number
   title: string
   description?: string
+  imageUrl?: string | null
   isActive: boolean
 }
 
@@ -84,7 +87,108 @@ export interface GlobalClubResponse {
   isActive: boolean
   isBlocked: boolean
   blockReason: string | null
+  reportsCount: number
   createdAt: string
+}
+
+export interface GlobalClubStatsResponse {
+  ownersCount: number
+  adminsCount: number
+  totalSeats: number
+  activeSeats: number
+  regularSeats: number
+  vipSeats: number
+  floorplansTotal: number
+  publishedFloorplans: number
+  draftFloorplans: number
+  archivedFloorplans: number
+  linkedCatalogItems: number
+  availableCatalogItems: number
+  timePackagesTotal: number
+  activeTimePackages: number
+  activeBlocksCount: number
+  warningsCount: number
+  reportsNewCount: number
+  reportsInProgressCount: number
+  reportsResolvedCount: number
+  bookingsTotal: number
+  purchasesTotal: number
+  paidRevenueRub: number
+}
+
+export interface GlobalClubPermissionOverrideResponse {
+  permission: string
+  granted: boolean
+}
+
+export interface GlobalClubStaffDetailsResponse {
+  userId: number
+  phone: string | null
+  role: ClubRole
+  addedAt: string
+  addedByUserId: number | null
+  addedByPhone: string | null
+  rolePermissions: string[]
+  overrides: GlobalClubPermissionOverrideResponse[]
+  effectivePermissions: string[]
+}
+
+export interface GlobalClubBlockResponse {
+  userId: number
+  phone: string | null
+  isBlocked: boolean
+  reason: string | null
+  blockedUntil: string | null
+  blockedByUserId: number | null
+  blockedByPhone: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GlobalClubFloorplanResponse {
+  id: number
+  clubId: number
+  name: string
+  status: FloorplanStatus
+  width: number
+  height: number
+  gridSize: number
+  version: number
+  itemCount: number
+  data: unknown
+  updatedAt: string
+}
+
+export interface GlobalClubDetailsResponse {
+  id: number
+  name: string
+  addressShort: string
+  addressFull: string
+  locationText: string | null
+  description: string | null
+  imageUrl: string | null
+  isActive: boolean
+  isBlocked: boolean
+  blockReason: string | null
+  latitude: number | null
+  longitude: number | null
+  createdAt: string
+  updatedAt: string
+  stats: GlobalClubStatsResponse
+  dashboard: ClubDashboardResponse
+  staff: GlobalClubStaffDetailsResponse[]
+  seats: AdminSeatResponse[]
+  seatPrices: AdminSeatPriceResponse[]
+  seatSpecs: SeatSpecResponse[]
+  timePackages: AdminTimePackageResponse[]
+  floorplans: GlobalClubFloorplanResponse[]
+  catalog: AdminClubCatalogResponse
+  reports: ClubUserReportResponse[]
+  warnings: ClubWarningResponse[]
+  blocks: GlobalClubBlockResponse[]
+  bookings: AdminBookingResponse[]
+  purchases: AdminPurchaseResponse[]
+  audit: AuditLogResponse[]
 }
 
 export interface BlockClubRequest {
@@ -106,6 +210,158 @@ export interface AdminUserResponse {
   hasPassword: boolean
   createdAt: string
   updatedAt: string
+  bookingsCount: number
+  purchasesCount: number
+  totalSpentRub: number
+  visitedClubsCount: number
+  lastActivityAt: string | null
+  clubRoles: UserClubRoleInfo[]
+}
+
+export interface UserPurchasePreview {
+  purchaseId: number
+  clubId: number
+  clubName: string
+  totalRub: number
+  paymentStatus: string
+  createdAt: string
+}
+
+export interface UserBookingPreview {
+  bookingId: number
+  clubId: number
+  clubName: string
+  startAt: string
+  endAt: string
+  status: string
+  totalRub: number
+}
+
+export interface UserActiveBlockInfo {
+  clubId: number
+  clubName: string
+  reason: string | null
+  blockedUntil: string | null
+  createdAt: string
+}
+
+export interface UserClubRoleInfo {
+  clubId: number
+  clubName: string
+  role: string
+}
+
+export interface AdminUserDetailsResponse {
+  id: number
+  phone: string | null
+  isActive: boolean
+  globalRole: GlobalRole
+  hasPassword: boolean
+  createdAt: string
+  updatedAt: string
+  bookingsCount: number
+  purchasesCount: number
+  totalSpentRub: number
+  visitedClubsCount: number
+  lastActivityAt: string | null
+  recentPurchases: UserPurchasePreview[]
+  activeBlocks: UserActiveBlockInfo[]
+  recentBookings: UserBookingPreview[]
+  clubRoles: UserClubRoleInfo[]
+}
+
+export interface GlobalAdminUserBookingItem {
+  bookingId: number
+  clubId: number
+  clubName: string
+  startAt: string
+  endAt: string
+  status: string
+  totalRub: number
+  seatLabels: string[]
+  purchaseId: number | null
+}
+
+export interface GlobalAdminUserPurchaseItem {
+  purchaseId: number
+  clubId: number
+  clubName: string
+  paymentStatus: string
+  totalRub: number
+  bookingTotalRub: number
+  productsTotalRub: number
+  createdAt: string
+}
+
+export interface GlobalAdminUserReportItem {
+  reportId: number
+  clubId: number
+  clubName: string
+  message: string
+  status: ClubReportStatus
+  createdAt: string
+}
+
+export interface ClubUserListItem {
+  userId: number
+  phone: string | null
+  isActive: boolean
+  firstVisitAt: string | null
+  lastVisitAt: string | null
+  bookingsCount: number
+  purchasesCount: number
+  totalSpentRub: number
+  cancelledBookingsCount: number
+  isBlocked: boolean
+  blockedUntil: string | null
+  blockReason: string | null
+}
+
+export interface ClubUserDetailResponse {
+  userId: number
+  phone: string | null
+  isActive: boolean
+  isBlocked: boolean
+  blockReason: string | null
+  blockedUntil: string | null
+  blockedAt: string | null
+  blockedByPhone: string | null
+  firstVisitAt: string | null
+  lastVisitAt: string | null
+  bookingsCount: number
+  purchasesCount: number
+  totalSpentRub: number
+  avgSpentRub: number
+  cancelledBookingsCount: number
+  totalHoursBooked: number
+  favoriteSeatType: string | null
+  recentBookings: ClubUserBookingItem[]
+  recentPurchases: ClubUserPurchaseItem[]
+  reports: ClubUserReportForDetail[]
+}
+
+export interface ClubUserBookingItem {
+  bookingId: number
+  startAt: string
+  endAt: string
+  seatLabels: string[]
+  durationHours: number
+  totalRub: number
+  status: string
+}
+
+export interface ClubUserPurchaseItem {
+  purchaseId: number
+  createdAt: string
+  totalRub: number
+  paymentStatus: string
+}
+
+export interface ClubUserReportForDetail {
+  reportId: number
+  message: string
+  status: string
+  createdAt: string
 }
 
 export interface CreateUserRequest {
@@ -473,11 +729,157 @@ export interface FloorplanBookingEntry {
   paymentStatus: string | null
 }
 
+// --- Клиентские типы ---
+
+export interface TimePackageClientResponse {
+  id: number
+  name: string
+  hours: number
+  pricePerHourRub: number
+  totalPriceRub: number
+  availableFrom: string | null
+  availableTo: string | null
+}
+
+export interface SeatPriceClientResponse {
+  seatType: 'REGULAR' | 'VIP'
+  pricePerHourRub: number
+}
+
+export interface SeatClientResponse {
+  id: number
+  label: string
+  type: 'REGULAR' | 'VIP'
+}
+
+export interface ClubProductResponse {
+  productId: number
+  categoryId: number
+  categoryTitle: string
+  title: string
+  description: string | null
+  imageUrl: string | null
+  priceRub: number
+  isAvailable: boolean
+}
+
+export interface FloorplanWithAvailabilityClientResponse {
+  floorplan: FloorplanResponse
+  from: string
+  to: string
+  busySeatIds: number[]
+  seats: { seatId: number; isBusy: boolean }[]
+}
+
+export interface CartBookingLineClientResponse {
+  lineId: number
+  startAt: string
+  endAt: string
+  packageHours: number | null
+  seatIds: number[]
+}
+
+export interface CartProductLineClientResponse {
+  lineId: number
+  productId: number
+  title: string
+  qty: number
+  priceRub: number
+  lineTotalRub: number
+}
+
+export interface CartClientResponse {
+  cartId: number
+  userId: number
+  clubId: number
+  updatedAt: string
+  bookings: CartBookingLineClientResponse[]
+  products: CartProductLineClientResponse[]
+}
+
+export interface ClubProductClientResponse {
+  productId: number
+  categoryId: number
+  categoryTitle: string
+  title: string
+  description: string | null
+  imageUrl: string | null
+  priceRub: number
+  isAvailable: boolean
+}
+
+export interface CheckoutClientResponse {
+  purchaseId: number
+  paymentStatus: string
+  bookingTotalRub: number
+  productsTotalRub: number
+  totalRub: number
+}
+
+export interface ClubListItemResponse {
+  id: number
+  name: string
+  address: string
+  locationText: string | null
+  description: string | null
+  imageUrl: string | null
+  latitude: number | null
+  longitude: number | null
+  minPricePerHourRub: number | null
+  /** Присутствует только при запросе /clubs/available (авторизованный пользователь) */
+  isBlocked?: boolean
+  blockReason?: string | null
+}
+
+export interface ClientPurchaseListItem {
+  purchaseId: number
+  clubId: number
+  clubName: string
+  createdAt: string
+  bookingTotalRub: number
+  productsTotalRub: number
+  totalRub: number
+  paymentStatus: PaymentStatus
+}
+
+export interface ClientBookingItem {
+  bookingId: number
+  startAt: string
+  endAt: string
+  seatIds: number[]
+  seatLabels: string[]
+  totalRub: number
+}
+
+export interface ClientProductItem {
+  productId: number
+  name: string
+  qty: number
+  unitRub: number
+  totalRub: number
+}
+
+export interface ClientPurchaseDetails {
+  purchaseId: number
+  clubId: number
+  clubName: string
+  createdAt: string
+  paymentStatus: PaymentStatus
+  bookingItems: ClientBookingItem[]
+  productItems: ClientProductItem[]
+  bookingTotalRub: number
+  productsTotalRub: number
+  totalRub: number
+}
+
+export type ClubReportStatus = 'NEW' | 'IN_PROGRESS' | 'RESOLVED'
+
 export interface ClubUserReportResponse {
   id: number
   userId: number
   userPhone: string | null
   message: string
+  status: ClubReportStatus
   createdAt: string
 }
 

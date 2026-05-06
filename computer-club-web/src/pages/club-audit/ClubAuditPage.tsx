@@ -16,6 +16,8 @@ import type { ColumnsType } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
 import apiClient from '../../utils/apiClient'
 import type { AuditLogResponse } from '../../types'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
 
 // --- Справочник действий ---
 
@@ -160,6 +162,7 @@ export default function ClubAuditPage() {
       dataIndex: 'id',
       key: 'id',
       width: 72,
+      sorter: (a, b) => Number(a.id) - Number(b.id),
     },
     {
       title: 'Дата',
@@ -200,52 +203,55 @@ export default function ClubAuditPage() {
   }))
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Журнал аудита</h2>
-        <Button icon={<ReloadOutlined />} onClick={fetchLogs} loading={loading}>
-          Обновить
-        </Button>
-      </div>
-
-      <Space wrap style={{ marginBottom: 16 }}>
-        <Input.Search
-          placeholder="Актор (телефон или ID)"
-          allowClear
-          style={{ width: 220 }}
-          value={actorSearch}
-          onChange={e => setActorSearch(e.target.value)}
-        />
-        <Select
-          style={{ width: 220 }}
-          placeholder="Все действия"
-          allowClear
-          value={actionFilter ?? undefined}
-          onChange={v => setActionFilter(v ?? null)}
-          options={actionOptions}
-          showSearch
-          filterOption={(input, opt) =>
-            (opt?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
-          }
-        />
-        <DatePicker.RangePicker
-          showTime
-          onChange={val => setDateRange(val as [Dayjs, Dayjs] | null)}
-        />
-      </Space>
-
-      <Table
-        columns={columns}
-        dataSource={filteredLogs}
-        rowKey="id"
-        loading={loading}
-        pagination={{ pageSize: 50, showSizeChanger: false }}
-        expandable={{
-          expandedRowRender: record => <ExpandedRow record={record} />,
-          rowExpandable: record => record.before != null || record.after != null,
-        }}
-        size="small"
+    <div>
+      <PageHeader
+        title="Журнал аудита"
+        subtitle="История изменений в клубе"
+        extra={<Button icon={<ReloadOutlined />} onClick={fetchLogs} loading={loading}>Обновить</Button>}
       />
+
+      <SectionCard style={{ marginBottom: 16 }}>
+        <Space wrap>
+          <Input.Search
+            placeholder="Актор (телефон или ID)"
+            allowClear
+            style={{ width: 220 }}
+            value={actorSearch}
+            onChange={e => setActorSearch(e.target.value)}
+          />
+          <Select
+            style={{ width: 220 }}
+            placeholder="Все действия"
+            allowClear
+            value={actionFilter ?? undefined}
+            onChange={v => setActionFilter(v ?? null)}
+            options={actionOptions}
+            showSearch
+            filterOption={(input, opt) =>
+              (opt?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
+            }
+          />
+          <DatePicker.RangePicker
+            showTime
+            onChange={val => setDateRange(val as [Dayjs, Dayjs] | null)}
+          />
+        </Space>
+      </SectionCard>
+
+      <SectionCard noPadding>
+        <Table
+          columns={columns}
+          dataSource={filteredLogs}
+          rowKey="id"
+          loading={loading}
+          pagination={{ pageSize: 50, showSizeChanger: false }}
+          expandable={{
+            expandedRowRender: record => <ExpandedRow record={record} />,
+            rowExpandable: record => record.before != null || record.after != null,
+          }}
+          size="small"
+        />
+      </SectionCard>
     </div>
   )
 }

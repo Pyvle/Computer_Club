@@ -12,16 +12,20 @@ import com.club.backend.domain.enum.PaymentStatus
 import com.club.backend.repository.*
 import com.club.backend.repository.ClubSeatPriceRepository
 import com.club.backend.repository.ClubTimePackageRepository
+import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.persistence.EntityNotFoundException
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.server.ResponseStatusException
+import java.security.MessageDigest
 import java.time.Duration
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import kotlin.math.ceil
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 
 private const val FALLBACK_RATE = 200 // используется если цены за места не заданы
+private const val CHECKOUT_ENDPOINT = "POST /api/v1/checkout"
 
 @Service
 class CheckoutService(
@@ -41,11 +45,42 @@ class CheckoutService(
     private val clubAccessService: ClubAccessService,
     private val auditService: AuditService,
     private val seatPriceRepository: ClubSeatPriceRepository,
-    private val timePackageRepository: ClubTimePackageRepository
+    private val timePackageRepository: ClubTimePackageRepository,
+    private val idempotencyKeyRepository: IdempotencyKeyRepository,
+    private val objectMapper: ObjectMapper
 ) {
 
+    private fun hashRequest(request: CheckoutRequest): String {
+        val json = objectMapper.writeValueAsString(request)
+        val bytes = MessageDigest.getInstance("SHA-256").digest(json.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    /** Возвращает кэшированный ответ по idempotencyKey или null если запись не найдена. */
+    @Transactional(readOnly = true)
+    fun findIdempotentResponse(userId: Long, idempotencyKey: String?, request: CheckoutRequest): CheckoutResponse? {
+        if (idempotencyKey.isNullOrBlank()) return null
+        val existing = idempotencyKeyRepository.findByIdAndUser_IdAndEndpoint(idempotencyKey, userId, CHECKOUT_ENDPOINT)
+            ?: return null
+        if (existing.requestHash != hashRequest(request)) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Idempotency-Key was already used with another request")
+        }
+        return objectMapper.readValue(existing.responseBody, CheckoutResponse::class.java)
+    }
+
     @Transactional
-    fun checkout(userId: Long, request: CheckoutRequest): CheckoutResponse {
+    fun checkout(userId: Long, request: CheckoutRequest, idempotencyKey: String? = null): CheckoutResponse {
+        // проверка идемпотентности: если ключ уже использован — вернуть кэшированный ответ
+        if (!idempotencyKey.isNullOrBlank()) {
+            val existing = idempotencyKeyRepository.findByIdAndUser_IdAndEndpoint(idempotencyKey, userId, CHECKOUT_ENDPOINT)
+            if (existing != null) {
+                if (existing.requestHash != hashRequest(request)) {
+                    throw ResponseStatusException(HttpStatus.CONFLICT, "Idempotency-Key was already used with another request")
+                }
+                return objectMapper.readValue(existing.responseBody, CheckoutResponse::class.java)
+            }
+        }
+
         clubAccessService.ensureNotBlocked(userId, request.clubId)
 
         val user = userRepository.findById(userId).orElseThrow { EntityNotFoundException("User not found") }
@@ -201,13 +236,32 @@ class CheckoutService(
             )
         )
 
-        return CheckoutResponse(
+        val response = CheckoutResponse(
             purchaseId = purchase.id!!,
             paymentStatus = purchase.paymentStatus.name,
             bookingTotalRub = purchase.bookingTotalRub,
             productsTotalRub = purchase.productsTotalRub,
             totalRub = purchase.totalRub
         )
+
+        // сохраняем ключ идемпотентности в той же транзакции — при откате покупки ключ тоже откатится
+        if (!idempotencyKey.isNullOrBlank()) {
+            val now = OffsetDateTime.now()
+            idempotencyKeyRepository.save(
+                IdempotencyKeyEntity(
+                    id = idempotencyKey,
+                    user = user,
+                    endpoint = CHECKOUT_ENDPOINT,
+                    requestHash = hashRequest(request),
+                    statusCode = 200,
+                    responseBody = objectMapper.writeValueAsString(response),
+                    createdAt = now,
+                    expiresAt = now.plusHours(24)
+                )
+            )
+        }
+
+        return response
     }
 
     @Transactional(readOnly = true)
@@ -216,6 +270,7 @@ class CheckoutService(
             PurchaseListItemResponse(
                 purchaseId = it.id!!,
                 clubId = it.club.id!!,
+                clubName = it.club.name,
                 createdAt = it.createdAt.toString(),
                 bookingTotalRub = it.bookingTotalRub,
                 productsTotalRub = it.productsTotalRub,
@@ -240,7 +295,9 @@ class CheckoutService(
                 endAt = b.endAt.toString(),
                 seatIds = b.seats.map { it.seat.id!! },
                 seatLabels = b.seats.map { it.seat.label },
-                totalRub = b.totalRubSnapshot
+                totalRub = b.totalRubSnapshot,
+                rateRubPerHourSnapshot = b.rateRubPerHourSnapshot,
+                packageHours = b.packageHours
             )
         }
 
@@ -252,7 +309,7 @@ class CheckoutService(
                 val totalRub = unitRub * i.qty
 
                 ProductItemResponse(
-                    productId = i.product.id!!,
+                    productId = i.product?.id,
                     name = i.titleSnapshot,
                     qty = i.qty,
                     unitRub = unitRub,
@@ -264,6 +321,7 @@ class CheckoutService(
         return PurchaseDetailsResponse(
             purchaseId = purchase.id!!,
             clubId = purchase.club.id!!,
+            clubName = purchase.club.name,
             createdAt = purchase.createdAt.toString(),
             paymentStatus = purchase.paymentStatus.name,
             bookingItems = bookingItems,
@@ -292,6 +350,7 @@ class CheckoutService(
         return PurchaseListItemResponse(
             purchaseId = purchase.id!!,
             clubId = purchase.club.id!!,
+            clubName = purchase.club.name,
             createdAt = purchase.createdAt.toString(),
             bookingTotalRub = purchase.bookingTotalRub,
             productsTotalRub = purchase.productsTotalRub,
@@ -315,6 +374,7 @@ class CheckoutService(
         return PurchaseListItemResponse(
             purchaseId = purchase.id!!,
             clubId = purchase.club.id!!,
+            clubName = purchase.club.name,
             createdAt = purchase.createdAt.toString(),
             bookingTotalRub = purchase.bookingTotalRub,
             productsTotalRub = purchase.productsTotalRub,

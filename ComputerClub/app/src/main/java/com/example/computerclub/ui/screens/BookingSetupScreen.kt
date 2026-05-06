@@ -199,7 +199,7 @@ fun BookingSetupScreen(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             // --- КЛУБ ---
-            Card {
+            com.example.computerclub.ui.components.AppCard {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -208,13 +208,19 @@ fun BookingSetupScreen(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(club?.name ?: "Клуб", style = MaterialTheme.typography.titleMedium)
-                        Text(club?.address ?: "", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            club?.address ?: "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = com.example.computerclub.ui.theme.TextSecondary
+                        )
                     }
                     val isFav by remember { derivedStateOf { club != null && appVm.isFavoriteClub(club.id) } }
                     IconButton(onClick = { club?.let { appVm.toggleFavoriteClub(it.id) } }) {
                         Icon(
                             imageVector = if (isFav) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                            contentDescription = "Избранное"
+                            contentDescription = "Избранное",
+                            tint = if (isFav) com.example.computerclub.ui.theme.BrandIndigo
+                                   else com.example.computerclub.ui.theme.TextMuted
                         )
                     }
                 }
@@ -278,40 +284,45 @@ fun BookingSetupScreen(
         }
 
         // кнопки всегда видны внизу экрана
-        Column(
+        Surface(
+            color = com.example.computerclub.ui.theme.AppSurfaceAlt,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            FilledTonalButton(
-                onClick = {
-                    val ok = appVm.quickBookOneSeat()
-                    if (ok) {
-                        // В корзину бронь попадает только после выбора места (быстрая бронь делает выбор автоматически)
-                        appVm.commitCurrentBookingToCartAsync { res ->
-                            if (res.ok) {
-                                onQuickBookToCart()
-                            } else {
-                                scopeSnack.launch {
-                                    snackbarHostState.showSnackbar(res.message ?: "Не удалось добавить в корзину")
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                com.example.computerclub.ui.components.AppSecondaryButton(
+                    text = "Быстрая бронь",
+                    onClick = {
+                        val ok = appVm.quickBookOneSeat()
+                        if (ok) {
+                            appVm.commitCurrentBookingToCartAsync { res ->
+                                if (res.ok) {
+                                    onQuickBookToCart()
+                                } else {
+                                    scopeSnack.launch {
+                                        snackbarHostState.showSnackbar(res.message ?: "Не удалось добавить в корзину")
+                                    }
                                 }
                             }
+                        } else {
+                            scopeSnack.launch {
+                                snackbarHostState.showSnackbar("Нет доступных компьютеров на выбранное время")
+                            }
                         }
-                    } else {
-                        scopeSnack.launch {
-                            snackbarHostState.showSnackbar("Нет доступных компьютеров на выбранное время")
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Быстрая бронь") }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-            Button(
-                onClick = onNext,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Далее") }
+                com.example.computerclub.ui.components.AppPrimaryButton(
+                    text = "Выбрать места",
+                    onClick = onNext,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
 
         SnackbarHost(
@@ -441,7 +452,7 @@ private fun TimePackageCard(
 
     OutlinedCard(
         modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
+        shape = com.example.computerclub.ui.theme.ShapeMedium,
         border = BorderStroke(
             1.5.dp,
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
@@ -741,7 +752,7 @@ private fun DateStrip(
 
                 Surface(
                     onClick = { onPick(d) },
-                    shape = RoundedCornerShape(8.dp),
+                    shape = com.example.computerclub.ui.theme.ShapeSmall,
                     tonalElevation = 1.dp,
                     color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.size(DATE_TILE_SIZE)

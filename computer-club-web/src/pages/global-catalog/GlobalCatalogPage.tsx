@@ -3,6 +3,7 @@ import {
   App,
   Button,
   Form,
+  Image,
   Input,
   InputNumber,
   Modal,
@@ -13,11 +14,13 @@ import {
   Table,
   Tabs,
   Tag,
-  Typography,
+  Upload,
 } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import apiClient from '../../utils/apiClient'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
 import type {
   AdminCategoryResponse,
   AdminProductResponse,
@@ -50,6 +53,8 @@ export default function GlobalCatalogPage() {
   const [selectedProduct, setSelectedProduct] = useState<AdminProductResponse | null>(null)
   const [prodSubmitting, setProdSubmitting] = useState(false)
   const [prodForm] = Form.useForm()
+  const [prodImageUrl, setProdImageUrl] = useState<string | null>(null)
+  const [prodImageUploading, setProdImageUploading] = useState(false)
 
   async function fetchCategories() {
     setCatLoading(true)
@@ -123,6 +128,7 @@ export default function GlobalCatalogPage() {
       await apiClient.delete(`/admin/global/catalog/categories/${id}`)
       message.success('Категория удалена')
       fetchCategories()
+      fetchProducts()
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Не удалось удалить категорию')
     }
@@ -134,6 +140,7 @@ export default function GlobalCatalogPage() {
     setSelectedProduct(null)
     prodForm.resetFields()
     prodForm.setFieldsValue({ isActive: true })
+    setProdImageUrl(null)
     setProdModalOpen(true)
   }
 
@@ -146,19 +153,21 @@ export default function GlobalCatalogPage() {
       description: prod.description ?? '',
       isActive: prod.isActive,
     })
+    setProdImageUrl(prod.imageUrl)
     setProdModalOpen(true)
   }
 
   async function handleProdSubmit(values: CreateProductRequest | UpdateProductRequest) {
     setProdSubmitting(true)
     try {
+      const payload = { ...values, imageUrl: prodImageUrl ?? null }
       if (prodModalMode === 'create') {
-        await apiClient.post('/admin/global/catalog/products', values as CreateProductRequest)
+        await apiClient.post('/admin/global/catalog/products', payload as CreateProductRequest)
         message.success('Товар создан')
       } else {
         await apiClient.put(
           `/admin/global/catalog/products/${selectedProduct!.id}`,
-          values as UpdateProductRequest,
+          payload as UpdateProductRequest,
         )
         message.success('Товар обновлён')
       }
@@ -182,7 +191,7 @@ export default function GlobalCatalogPage() {
   }
 
   const categoryColumns: ColumnsType<AdminCategoryResponse> = [
-    { title: 'ID', dataIndex: 'id', width: 60 },
+    { title: 'ID', dataIndex: 'id', width: 60, sorter: (a, b) => Number(a.id) - Number(b.id) },
     { title: 'Название', dataIndex: 'title' },
     { title: 'Порядок', dataIndex: 'sortOrder', width: 100 },
     {
@@ -202,7 +211,7 @@ export default function GlobalCatalogPage() {
           </Button>
           <Popconfirm
             title="Удалить категорию?"
-            description="Удаление невозможно, если в категории есть товары."
+            description="Все товары категории и их привязки к клубам будут удалены. Невозможно, если любой из товаров встречается в истории покупок."
             okText="Удалить"
             cancelText="Отмена"
             okButtonProps={{ danger: true }}
@@ -216,7 +225,18 @@ export default function GlobalCatalogPage() {
   ]
 
   const productColumns: ColumnsType<AdminProductResponse> = [
-    { title: 'ID', dataIndex: 'id', width: 60 },
+    { title: 'ID', dataIndex: 'id', width: 60, sorter: (a, b) => Number(a.id) - Number(b.id) },
+    {
+      title: 'Фото',
+      dataIndex: 'imageUrl',
+      width: 72,
+      render: (url: string | null) =>
+        url ? (
+          <Image src={url} width={48} height={48} style={{ objectFit: 'cover', borderRadius: 4 }} />
+        ) : (
+          <div style={{ width: 48, height: 48, background: '#f0f0f0', borderRadius: 4 }} />
+        ),
+    },
     {
       title: 'Категория',
       dataIndex: 'categoryId',
@@ -246,7 +266,7 @@ export default function GlobalCatalogPage() {
           </Button>
           <Popconfirm
             title="Удалить товар?"
-            description="Удаление невозможно, если товар привязан к каталогу клуба."
+            description="Товар будет удалён из глобального каталога и каталогов всех клубов. Удаление невозможно, если товар встречается в истории покупок."
             okText="Удалить"
             cancelText="Отмена"
             okButtonProps={{ danger: true }}
@@ -297,17 +317,17 @@ export default function GlobalCatalogPage() {
 
   return (
     <>
-      <Typography.Title level={4} style={{ marginBottom: 16 }}>
-        Глобальный каталог
-      </Typography.Title>
+      <PageHeader title="Глобальный каталог" subtitle="Категории и товары, доступные для подключения в любом клубе платформы" />
 
-      <Tabs
-        defaultActiveKey="categories"
-        items={[
-          { key: 'categories', label: 'Категории', children: categoryTab },
-          { key: 'products', label: 'Товары', children: productTab },
-        ]}
-      />
+      <SectionCard>
+        <Tabs
+          defaultActiveKey="categories"
+          items={[
+            { key: 'categories', label: 'Категории', children: categoryTab },
+            { key: 'products', label: 'Товары', children: productTab },
+          ]}
+        />
+      </SectionCard>
 
       {/* Модал категории */}
       <Modal
@@ -360,6 +380,50 @@ export default function GlobalCatalogPage() {
           </Form.Item>
           <Form.Item name="description" label="Описание">
             <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item label="Фото товара">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Upload
+                accept="image/jpeg,image/png,image/webp"
+                showUploadList={false}
+                customRequest={async ({ file, onSuccess, onError }) => {
+                  setProdImageUploading(true)
+                  const formData = new FormData()
+                  formData.append('file', file as File)
+                  try {
+                    const res = await apiClient.post<{ path: string }>(
+                      '/admin/uploads/product-image',
+                      formData,
+                      { headers: { 'Content-Type': 'multipart/form-data' } },
+                    )
+                    setProdImageUrl(res.data.path)
+                    onSuccess?.(res.data)
+                    message.success('Фото загружено')
+                  } catch (e) {
+                    message.error('Не удалось загрузить фото')
+                    onError?.(e as Error)
+                  } finally {
+                    setProdImageUploading(false)
+                  }
+                }}
+              >
+                <Button icon={<UploadOutlined />} loading={prodImageUploading}>
+                  {prodImageUrl ? 'Заменить фото' : 'Загрузить фото'}
+                </Button>
+              </Upload>
+              {prodImageUrl && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Image src={prodImageUrl} width={56} height={56} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                  <Button
+                    size="small"
+                    danger
+                    onClick={() => setProdImageUrl(null)}
+                  >
+                    Удалить
+                  </Button>
+                </div>
+              )}
+            </div>
           </Form.Item>
           <Form.Item name="isActive" label="Активен" valuePropName="checked">
             <Switch />

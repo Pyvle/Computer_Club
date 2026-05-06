@@ -140,6 +140,30 @@ interface BookingRepository : JpaRepository<BookingEntity, Long> {
     @Query("SELECT COUNT(bs.seat.id) FROM BookingEntity b JOIN b.seats bs WHERE b.club.id = :clubId AND b.status = 'ACTIVE'")
     fun countOccupiedSeats(@Param("clubId") clubId: Long): Long
 
+    @Query("SELECT COUNT(b) FROM BookingEntity b WHERE b.user.id = :userId")
+    fun countByUserId(@Param("userId") userId: Long): Long
+
+    @Query("SELECT MAX(b.createdAt) FROM BookingEntity b WHERE b.user.id = :userId")
+    fun findLatestCreatedAtByUserId(@Param("userId") userId: Long): LocalDateTime?
+
+    @Query("""
+        SELECT b FROM BookingEntity b
+        JOIN FETCH b.club
+        WHERE b.user.id = :userId
+        ORDER BY b.startAt DESC
+    """)
+    fun findRecentByUserId(@Param("userId") userId: Long, pageable: Pageable): List<BookingEntity>
+
+    @Query("""
+        select distinct b from BookingEntity b
+        join fetch b.club
+        left join fetch b.seats bs
+        left join fetch bs.seat s
+        where b.user.id = :userId
+        order by b.startAt desc
+    """)
+    fun findAllByUserIdFetch(@Param("userId") userId: Long): List<BookingEntity>
+
     /** Возвращает брони клуба, активные в указанный момент времени (для снимка занятости зала). */
     @Query(
         """
@@ -173,4 +197,16 @@ interface BookingRepository : JpaRepository<BookingEntity, Long> {
         @Param("clubId") clubId: Long,
         pageable: Pageable
     ): List<DashboardBookingPreview>
+
+    @Query("""
+        select distinct b from BookingEntity b
+        left join fetch b.seats bs
+        left join fetch bs.seat s
+        where b.club.id = :clubId and b.user.id = :userId
+        order by b.startAt desc
+    """)
+    fun findAllByClubIdAndUserIdFetch(
+        @Param("clubId") clubId: Long,
+        @Param("userId") userId: Long
+    ): List<BookingEntity>
 }

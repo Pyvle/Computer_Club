@@ -15,7 +15,7 @@ class ClubUserBlocksController(
 
     private fun currentUserId(): Long {
         val principal = SecurityContextHolder.getContext().authentication?.principal?.toString()
-            ?: throw IllegalArgumentException("Unauthorized")
+            ?: throw org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED, "Unauthorized")
         return principal.toLong()
     }
 

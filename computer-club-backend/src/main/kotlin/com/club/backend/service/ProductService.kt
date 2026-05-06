@@ -26,8 +26,9 @@ class ProductService(
     }
 
     @Transactional(readOnly = true)
-    fun getClubMenu(userId: Long, clubId: Long): List<ClubProductResponse> {
-        clubAccessService.ensureNotBlocked(userId, clubId)
+    fun getClubMenu(userId: Long?, clubId: Long): List<ClubProductResponse> {
+        // анонимный пользователь видит меню без проверки блокировки
+        if (userId != null) clubAccessService.ensureNotBlocked(userId, clubId)
         return clubProductRepository.findMenuByClubId(clubId).map { cp ->
             ClubProductResponse(
                 productId = cp.product.id!!,

@@ -13,8 +13,8 @@ class ProductOrderItemEntity(
     var productOrder: ProductOrderEntity,
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "product_id", nullable = false)
-    var product: ProductEntity,
+    @JoinColumn(name = "product_id", nullable = true)
+    var product: ProductEntity?,
 
     @Column(name = "title_snapshot", nullable = false, length = 160)
     var titleSnapshot: String,

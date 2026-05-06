@@ -1,47 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import {
-  Button,
-  Card,
-  Descriptions,
-  message,
-  Space,
-  Spin,
-  Table,
-  Tag,
-  Typography,
-} from 'antd'
+import { Button, Descriptions, message, Space, Spin, Table, Tag } from 'antd'
+import { ArrowLeftOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import dayjs from 'dayjs'
 import apiClient from '../../utils/apiClient'
-import type {
-  AdminBookingDetailResponse,
-  AdminPurchaseSeatDetail,
-  BookingStatus,
-} from '../../types'
-
-const BOOKING_STATUS: Record<BookingStatus, string> = {
-  UPCOMING: 'Предстоящее',
-  ACTIVE: 'Активное',
-  DONE: 'Завершено',
-  CANCELED: 'Отменено',
-}
-
-const BOOKING_STATUS_COLOR: Record<BookingStatus, string> = {
-  UPCOMING: 'blue',
-  ACTIVE: 'success',
-  DONE: 'default',
-  CANCELED: 'error',
-}
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+import { BOOKING_STATUS } from '../../utils/statusMaps'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
+import StatusBadge from '../../components/ui/StatusBadge'
+import { tokens } from '../../theme/tokens'
+import type { AdminBookingDetailResponse, AdminPurchaseSeatDetail } from '../../types'
 
 function formatDuration(hours: number): string {
   const h = Math.floor(hours)
@@ -51,11 +20,7 @@ function formatDuration(hours: number): string {
 }
 
 const seatColumns: ColumnsType<AdminPurchaseSeatDetail> = [
-  {
-    title: 'Место',
-    dataIndex: 'label',
-    key: 'label',
-  },
+  { title: 'Место', dataIndex: 'label', key: 'label' },
   {
     title: 'Тип',
     dataIndex: 'type',
@@ -77,7 +42,7 @@ export default function ClubBookingDetailPage() {
     setLoading(true)
     apiClient
       .get<AdminBookingDetailResponse>(`/admin/clubs/${clubId}/bookings/${bookingId}`)
-      .then(res => setDetail(res.data))
+      .then((res) => setDetail(res.data))
       .catch(() => message.error('Не удалось загрузить данные бронирования'))
       .finally(() => setLoading(false))
   }, [clubId, bookingId])
@@ -93,56 +58,67 @@ export default function ClubBookingDetailPage() {
   if (!detail) {
     return (
       <div style={{ padding: 24 }}>
-        <Button onClick={() => navigate(`/admin/club/${clubId}/bookings`)}>← Назад</Button>
-        <div style={{ marginTop: 16, color: '#999' }}>Бронирование не найдено</div>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/admin/club/${clubId}/bookings`)}>
+          Назад
+        </Button>
+        <div style={{ marginTop: 16, color: tokens.colors.textMuted }}>Бронирование не найдено</div>
       </div>
     )
   }
 
+  const bs = BOOKING_STATUS[detail.status]
+
   return (
-    <div style={{ padding: 24, maxWidth: 800 }}>
-      {/* Заголовок */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <Button onClick={() => navigate(`/admin/club/${clubId}/bookings`)}>← Назад</Button>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          Бронирование #{detail.id}
-        </Typography.Title>
-        <Tag color={BOOKING_STATUS_COLOR[detail.status]}>
-          {BOOKING_STATUS[detail.status]}
-        </Tag>
-      </div>
+    <div style={{ maxWidth: 800 }}>
+      <PageHeader
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              size="small"
+              onClick={() => navigate(`/admin/club/${clubId}/bookings`)}
+            />
+            Бронирование #{detail.id}
+            <StatusBadge label={bs.label} variant={bs.variant} />
+          </div>
+        }
+      />
 
       {/* Основная информация */}
-      <Card size="small" title="Основная информация" style={{ marginBottom: 16 }}>
+      <SectionCard title="Основная информация" style={{ marginBottom: 16 }}>
         <Descriptions size="small" column={2}>
           <Descriptions.Item label="Пользователь">
             {detail.userPhone ?? `#${detail.userId}`}
           </Descriptions.Item>
           <Descriptions.Item label="Статус">
-            <Tag color={BOOKING_STATUS_COLOR[detail.status]}>
-              {BOOKING_STATUS[detail.status]}
-            </Tag>
+            <StatusBadge label={bs.label} variant={bs.variant} />
           </Descriptions.Item>
         </Descriptions>
-      </Card>
+      </SectionCard>
 
-      {/* Время и тариф */}
-      <Card size="small" title="Время и стоимость" style={{ marginBottom: 16 }}>
+      {/* Время и стоимость */}
+      <SectionCard title="Время и стоимость" style={{ marginBottom: 16 }}>
         <Descriptions size="small" column={2}>
-          <Descriptions.Item label="Начало">{formatDateTime(detail.startAt)}</Descriptions.Item>
-          <Descriptions.Item label="Конец">{formatDateTime(detail.endAt)}</Descriptions.Item>
+          <Descriptions.Item label="Начало">
+            {dayjs(detail.startAt).format('DD.MM.YYYY HH:mm')}
+          </Descriptions.Item>
+          <Descriptions.Item label="Конец">
+            {dayjs(detail.endAt).format('DD.MM.YYYY HH:mm')}
+          </Descriptions.Item>
           <Descriptions.Item label="Длительность">
             {formatDuration(detail.durationHours)}
           </Descriptions.Item>
-          <Descriptions.Item label="Тариф">{detail.rateRubPerHour} ₽/ч</Descriptions.Item>
+          <Descriptions.Item label="Тариф">
+            {detail.rateRubPerHour} ₽/ч
+          </Descriptions.Item>
           <Descriptions.Item label="Сумма">
             <strong>{detail.totalRub} ₽</strong>
           </Descriptions.Item>
         </Descriptions>
-      </Card>
+      </SectionCard>
 
       {/* Места */}
-      <Card size="small" title="Места" style={{ marginBottom: 16 }}>
+      <SectionCard title="Места" style={{ marginBottom: 16 }}>
         {detail.seats.length > 0 ? (
           <Table
             size="small"
@@ -152,15 +128,15 @@ export default function ClubBookingDetailPage() {
             pagination={false}
           />
         ) : (
-          <span style={{ color: '#999' }}>Места не указаны</span>
+          <span style={{ color: tokens.colors.textMuted }}>Места не указаны</span>
         )}
-      </Card>
+      </SectionCard>
 
       {/* Связанная покупка */}
-      <Card size="small" title="Связанная покупка">
+      <SectionCard title="Связанная покупка">
         {detail.purchaseId ? (
           <Space>
-            <span>Покупка #{detail.purchaseId}</span>
+            <span style={{ color: tokens.colors.textSecondary }}>Покупка #{detail.purchaseId}</span>
             <Button
               type="primary"
               size="small"
@@ -170,9 +146,9 @@ export default function ClubBookingDetailPage() {
             </Button>
           </Space>
         ) : (
-          <span style={{ color: '#999' }}>Покупка не привязана</span>
+          <span style={{ color: tokens.colors.textMuted }}>Покупка не привязана</span>
         )}
-      </Card>
+      </SectionCard>
     </div>
   )
 }

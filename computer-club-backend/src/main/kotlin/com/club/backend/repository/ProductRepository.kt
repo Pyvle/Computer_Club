@@ -18,4 +18,6 @@ interface ProductRepository : JpaRepository<ProductEntity, Long> {
     fun findAllWithCategoryOrderByIdAsc(): List<ProductEntity>
 
     fun existsByCategoryId(categoryId: Long): Boolean
+
+    fun findAllByCategoryId(categoryId: Long): List<ProductEntity>
 }

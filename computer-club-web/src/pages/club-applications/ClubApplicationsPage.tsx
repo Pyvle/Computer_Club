@@ -11,10 +11,18 @@ import {
   Space,
   Typography,
   App,
+  Tooltip,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import {
+  CheckOutlined,
+  CloseOutlined,
+  EditOutlined,
+} from '@ant-design/icons'
 import dayjs from 'dayjs'
 import apiClient from '../../utils/apiClient'
+import PageHeader from '../../components/ui/PageHeader'
+import SectionCard from '../../components/ui/SectionCard'
 import type {
   ClubApplicationResponse,
   ClubApplicationStatus,
@@ -119,10 +127,15 @@ export default function ClubApplicationsPage() {
   }
 
   const columns: ColumnsType<ClubApplicationResponse> = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
+    { title: 'ID', dataIndex: 'id', width: 70, sorter: (a, b) => Number(a.id) - Number(b.id) },
     { title: 'Название клуба', dataIndex: 'clubName', ellipsis: true },
     { title: 'Адрес', dataIndex: 'address', ellipsis: true },
-    { title: 'Заявитель (ID)', dataIndex: 'applicantUserId', width: 130 },
+    {
+      title: 'Заявитель (ID)',
+      dataIndex: 'applicantUserId',
+      width: 130,
+      sorter: (a, b) => Number(a.applicantUserId) - Number(b.applicantUserId),
+    },
     {
       title: 'Дата подачи',
       dataIndex: 'createdAt',
@@ -139,19 +152,34 @@ export default function ClubApplicationsPage() {
     },
     {
       title: 'Действия',
-      width: 200,
+      width: 116,
+      fixed: 'right',
       render: (_, record) =>
         record.status === 'PENDING' ? (
-          <Space>
-            <Button type="primary" size="small" onClick={() => openModal('approve', record)}>
-              Одобрить
-            </Button>
-            <Button size="small" onClick={() => openModal('revision', record)}>
-              Доработка
-            </Button>
-            <Button danger size="small" onClick={() => openModal('reject', record)}>
-              Отклонить
-            </Button>
+          <Space size={4} wrap={false}>
+            <Tooltip title="Одобрить">
+              <Button
+                type="primary"
+                size="small"
+                icon={<CheckOutlined />}
+                onClick={() => openModal('approve', record)}
+              />
+            </Tooltip>
+            <Tooltip title="Запросить доработку">
+              <Button
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => openModal('revision', record)}
+              />
+            </Tooltip>
+            <Tooltip title="Отклонить">
+              <Button
+                danger
+                size="small"
+                icon={<CloseOutlined />}
+                onClick={() => openModal('reject', record)}
+              />
+            </Tooltip>
           </Space>
         ) : null,
     },
@@ -159,31 +187,34 @@ export default function ClubApplicationsPage() {
 
   return (
     <>
-      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          Заявки на клубы
-        </Typography.Title>
-        <Select
-          value={statusFilter}
-          onChange={setStatusFilter}
-          style={{ width: 180 }}
-          options={[
-            { value: 'ALL', label: 'Все' },
-            { value: 'DRAFT', label: 'Черновики' },
-            { value: 'PENDING', label: 'Ожидают' },
-            { value: 'REVISION_REQUESTED', label: 'На доработке' },
-            { value: 'APPROVED', label: 'Одобренные' },
-            { value: 'REJECTED', label: 'Отклонённые' },
-          ]}
-        />
-      </div>
+      <PageHeader
+        title="Заявки на клубы"
+        subtitle="Рассмотрение заявок на открытие новых клубов на платформе"
+        extra={
+          <Select
+            value={statusFilter}
+            onChange={setStatusFilter}
+            style={{ width: 180 }}
+            options={[
+              { value: 'ALL', label: 'Все' },
+              { value: 'DRAFT', label: 'Черновики' },
+              { value: 'PENDING', label: 'Ожидают' },
+              { value: 'REVISION_REQUESTED', label: 'На доработке' },
+              { value: 'APPROVED', label: 'Одобренные' },
+              { value: 'REJECTED', label: 'Отклонённые' },
+            ]}
+          />
+        }
+      />
 
-      <Table
+      <SectionCard noPadding>
+        <Table
         rowKey="id"
         columns={columns}
         dataSource={items}
         loading={loading}
         pagination={{ pageSize: 20 }}
+        scroll={{ x: 980 }}
         expandable={{
           expandedRowRender: (record) => (
             <div style={{ paddingLeft: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -212,7 +243,8 @@ export default function ClubApplicationsPage() {
           rowExpandable: (record) =>
             !!(record.description || record.locationText || record.decisionComment || record.createdClubId),
         }}
-      />
+        />
+      </SectionCard>
 
       <Modal
         title={
