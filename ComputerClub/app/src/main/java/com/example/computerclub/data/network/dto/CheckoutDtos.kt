@@ -41,11 +41,29 @@ data class BookingItemDto(
 
 @Serializable
 data class ProductItemDto(
-    val productId: Long,
+    val productId: Long?,
     val name: String,
     val qty: Int,
     val unitRub: Int,
     val totalRub: Int
+)
+
+@Serializable
+data class MyBookingHistoryItemDto(
+    val bookingId: Long,
+    val purchaseId: Long?,
+    val clubId: Long,
+    val clubName: String,
+    val createdAt: String,
+    val startAt: String,
+    val endAt: String,
+    val status: String,
+    val totalRub: Int,
+    val rateRubPerHourSnapshot: Int = 0,
+    val packageHours: Int? = null,
+    val seatIds: List<Long>,
+    val seatLabels: List<String>,
+    val paymentStatus: String? = null
 )
 
 @Serializable

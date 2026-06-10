@@ -37,6 +37,7 @@ class SecurityConfig(
                     "/api/v1/clubs/*/products",
                     "/api/v1/clubs/*/seats",
                     "/api/v1/clubs/*/seats/availability",
+                    "/api/v1/clubs/*/seats/max-availability",
                     "/api/v1/clubs/*/floorplan",
                     "/api/v1/clubs/*/floorplan-with-availability",
                     "/api/v1/clubs/*/seat-specs",

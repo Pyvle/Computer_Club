@@ -6,12 +6,13 @@ import com.club.backend.api.dto.CheckoutResponse
 import com.club.backend.api.dto.ProductItemResponse
 import com.club.backend.api.dto.PurchaseDetailsResponse
 import com.club.backend.api.dto.PurchaseListItemResponse
+import com.club.backend.api.dto.UserBookingHistoryItemResponse
 import com.club.backend.domain.entity.*
 import com.club.backend.domain.enum.BookingStatus
 import com.club.backend.domain.enum.PaymentStatus
 import com.club.backend.repository.*
-import com.club.backend.repository.ClubSeatPriceRepository
 import com.club.backend.repository.ClubTimePackageRepository
+import com.club.backend.repository.ClubSeatTypeSettingRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.persistence.EntityNotFoundException
 import org.springframework.http.HttpStatus
@@ -22,21 +23,17 @@ import java.security.MessageDigest
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
-import kotlin.math.ceil
 
-private const val FALLBACK_RATE = 200 // используется если цены за места не заданы
 private const val CHECKOUT_ENDPOINT = "POST /api/v1/checkout"
 
 @Service
 class CheckoutService(
     private val cartRepository: CartRepository,
-    private val cartBookingLineRepository: CartBookingLineRepository,
-    private val cartBookingSeatRepository: CartBookingSeatRepository,
-    private val cartProductLineRepository: CartProductLineRepository,
+    private val cartItemRepository: CartItemRepository,
+    private val cartItemSeatRepository: CartItemSeatRepository,
     private val bookingRepository: BookingRepository,
     private val bookingSeatRepository: BookingSeatRepository,
     private val purchaseRepository: PurchaseRepository,
-    private val productOrderRepository: ProductOrderRepository,
     private val productOrderItemRepository: ProductOrderItemRepository,
     private val userRepository: UserRepository,
     private val clubRepository: ClubRepository,
@@ -44,7 +41,7 @@ class CheckoutService(
     private val seatRepository: SeatRepository,
     private val clubAccessService: ClubAccessService,
     private val auditService: AuditService,
-    private val seatPriceRepository: ClubSeatPriceRepository,
+    private val seatTypeSettingRepository: ClubSeatTypeSettingRepository,
     private val timePackageRepository: ClubTimePackageRepository,
     private val idempotencyKeyRepository: IdempotencyKeyRepository,
     private val objectMapper: ObjectMapper
@@ -89,14 +86,14 @@ class CheckoutService(
         val cart = cartRepository.findByUserIdAndClubId(userId, request.clubId)
             .orElseThrow { EntityNotFoundException("Cart not found") }
 
-        val cartBookingLines = cartBookingLineRepository.findAllByCartIdOrderByIdAsc(cart.id!!)
-        val cartProductLines = cartProductLineRepository.findAllByCartIdOrderByIdAsc(cart.id!!)
+        val cartBookingLines = cartItemRepository.findAllByCartIdAndTypeOrderByIdAsc(cart.id!!, CartItemType.BOOKING)
+        val cartProductLines = cartItemRepository.findAllByCartIdAndTypeOrderByIdAsc(cart.id!!, CartItemType.PRODUCT)
 
         require(cartBookingLines.isNotEmpty() || cartProductLines.isNotEmpty()) { "Cart is empty" }
 
         // Пессимистичная блокировка seats — защита от race condition при одновременном checkout
         val allSeatIds = cartBookingLines
-            .flatMap { line -> cartBookingSeatRepository.findAllByLine_Id(line.id!!).map { it.seat.id!! } }
+            .flatMap { line -> cartItemSeatRepository.findAllByItem_Id(line.id!!).map { it.seat.id!! } }
             .distinct()
             .sorted()
 
@@ -106,9 +103,9 @@ class CheckoutService(
 
         // 1) Проверка конфликтов мест
         cartBookingLines.forEach { line ->
-            val seatIds = cartBookingSeatRepository.findAllByLine_Id(line.id!!).map { it.seat.id!! }
+            val seatIds = cartItemSeatRepository.findAllByItem_Id(line.id!!).map { it.seat.id!! }
             if (seatIds.isNotEmpty()) {
-                val busyIds = bookingRepository.findBusySeatIds(club.id!!, line.startAt, line.endAt)
+                val busyIds = bookingRepository.findBusySeatIds(club.id!!, line.startAt!!, line.endAt!!)
                     .map { it.getSeatId() }
                     .toSet()
 
@@ -119,35 +116,34 @@ class CheckoutService(
 
         // 2) Подсчёт суммы бронирований
         // тарифная сетка: цены за типы мест и активные пакеты
-        val seatPriceMap = seatPriceRepository.findAllByClub_Id(club.id!!)
-            .associate { it.seatType to it.pricePerHourRub }
-        val standardRate = if (seatPriceMap.isNotEmpty()) seatPriceMap.values.min() else FALLBACK_RATE
+        val seatPriceMap = seatTypeSettingRepository.findAllByClub_Id(club.id!!)
+            .mapNotNull { setting -> setting.pricePerHourRub?.let { setting.seatType to it } }
+            .toMap()
         val packageRateMap = timePackageRepository
             .findAllByClub_IdAndIsActiveTrueOrderBySortOrderAscIdAsc(club.id!!)
             .associate { it.hours to it.pricePerHourRub }
+        val pricing = BookingPricing(seatPriceMap, packageRateMap)
 
         var bookingTotal = 0
-        val bookingDrafts = mutableListOf<Triple<CartBookingLineEntity, Int, Int>>() // line, lineTotal, baseRate
+        val bookingDrafts = mutableListOf<Triple<CartItemEntity, Int, Int>>() // line, lineTotal, baseRate
 
         cartBookingLines.forEach { line ->
-            val lineSeats = cartBookingSeatRepository.findAllByLine_Id(line.id!!)
+            val lineSeats = cartItemSeatRepository.findAllByItem_Id(line.id!!)
             require(lineSeats.isNotEmpty()) { "Select at least one seat for booking line ${line.id}" }
 
-            val hours = Duration.between(line.startAt, line.endAt).toMinutes().toDouble() / 60.0
+            val hours = Duration.between(line.startAt!!, line.endAt!!).toMinutes().toDouble() / 60.0
             // базовая ставка: из пакета или стандартная
-            val baseRate = if (line.packageHours != null) packageRateMap[line.packageHours] ?: standardRate else standardRate
+            val baseRate = pricing.baseRate(line.packageHours)
             // итог = сумма по каждому месту: (baseRate + надбавка за тип) × часы
             val lineTotal = lineSeats.sumOf { cartSeat ->
-                val seatTypePrice = seatPriceMap[cartSeat.seat.type] ?: standardRate
-                val surcharge = maxOf(0, seatTypePrice - standardRate)
-                ceil(hours * (baseRate + surcharge)).toInt()
+                pricing.seatTotalRub(hours, cartSeat.seat.type, line.packageHours)
             }
             bookingTotal += lineTotal
             bookingDrafts += Triple(line, lineTotal, baseRate)
         }
 
         // 3) Подсчёт суммы товаров
-        val productsTotal = cartProductLines.sumOf { it.qty * it.priceRubSnapshot }
+        val productsTotal = cartProductLines.sumOf { it.qty!! * it.priceRubSnapshot!! }
         val total = bookingTotal + productsTotal
 
         // 4) Создаём purchase (mock-оплата)
@@ -170,8 +166,8 @@ class CheckoutService(
                     user = user,
                     club = club,
                     purchase = purchase,
-                    startAt = line.startAt,
-                    endAt = line.endAt,
+                    startAt = line.startAt!!,
+                    endAt = line.endAt!!,
                     packageHours = line.packageHours,
                     rateRubPerHourSnapshot = baseRate,
                     totalRubSnapshot = lineTotal,
@@ -181,7 +177,7 @@ class CheckoutService(
                 )
             )
 
-            val lineSeats = cartBookingSeatRepository.findAllByLine_Id(line.id!!)
+            val lineSeats = cartItemSeatRepository.findAllByItem_Id(line.id!!)
             lineSeats.forEach { cartSeat ->
                 bookingSeatRepository.save(
                     BookingSeatEntity(
@@ -193,26 +189,16 @@ class CheckoutService(
             }
         }
 
-        // 6) Создаём product_order + items
+        // 6) Создаём товарные позиции покупки
         if (cartProductLines.isNotEmpty()) {
-            val productOrder = productOrderRepository.save(
-                ProductOrderEntity(
-                    purchase = purchase,
-                    user = user,
-                    club = club,
-                    createdAt = LocalDateTime.now(),
-                    totalRubSnapshot = productsTotal
-                )
-            )
-
             cartProductLines.forEach { line ->
                 productOrderItemRepository.save(
                     ProductOrderItemEntity(
-                        productOrder = productOrder,
+                        purchase = purchase,
                         product = line.product,
-                        titleSnapshot = line.titleSnapshot,
-                        priceRubSnapshot = line.priceRubSnapshot,
-                        qty = line.qty
+                        titleSnapshot = line.titleSnapshot!!,
+                        priceRubSnapshot = line.priceRubSnapshot!!,
+                        qty = line.qty!!
                     )
                 )
             }
@@ -301,22 +287,18 @@ class CheckoutService(
             )
         }
 
-        val order = productOrderRepository.findByUserIdAndPurchaseId(userId, purchaseId)
+        val productItems = productOrderItemRepository.findAllByPurchaseIdFetchProduct(purchaseId).map { i ->
+            val unitRub = i.priceRubSnapshot
+            val totalRub = unitRub * i.qty
 
-        val productItems = if (order != null) {
-            productOrderItemRepository.findAllByOrderIdFetchProduct(order.id!!).map { i ->
-                val unitRub = i.priceRubSnapshot
-                val totalRub = unitRub * i.qty
-
-                ProductItemResponse(
-                    productId = i.product?.id,
-                    name = i.titleSnapshot,
-                    qty = i.qty,
-                    unitRub = unitRub,
-                    totalRub = totalRub
-                )
-            }
-        } else emptyList()
+            ProductItemResponse(
+                productId = i.product?.id,
+                name = i.titleSnapshot,
+                qty = i.qty,
+                unitRub = unitRub,
+                totalRub = totalRub
+            )
+        }
 
         return PurchaseDetailsResponse(
             purchaseId = purchase.id!!,
@@ -330,6 +312,28 @@ class CheckoutService(
             productsTotalRub = purchase.productsTotalRub,
             totalRub = purchase.totalRub
         )
+    }
+
+    @Transactional(readOnly = true)
+    fun userBookings(userId: Long): List<UserBookingHistoryItemResponse> {
+        return bookingRepository.findAllByUserIdFetch(userId).map { booking ->
+            UserBookingHistoryItemResponse(
+                bookingId = booking.id!!,
+                purchaseId = booking.purchase?.id,
+                clubId = booking.club.id!!,
+                clubName = booking.club.name,
+                createdAt = (booking.purchase?.createdAt ?: booking.createdAt).toString(),
+                startAt = booking.startAt.toString(),
+                endAt = booking.endAt.toString(),
+                status = booking.status.name,
+                totalRub = booking.totalRubSnapshot,
+                rateRubPerHourSnapshot = booking.rateRubPerHourSnapshot,
+                packageHours = booking.packageHours,
+                seatIds = booking.seats.map { it.seat.id!! },
+                seatLabels = booking.seats.map { it.seat.label },
+                paymentStatus = booking.purchase?.paymentStatus?.name
+            )
+        }
     }
 
     @Transactional

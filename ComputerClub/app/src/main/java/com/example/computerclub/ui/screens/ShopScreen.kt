@@ -22,12 +22,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import coil3.compose.AsyncImage
 import com.example.computerclub.model.Product
 import com.example.computerclub.vm.AppViewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -391,7 +393,18 @@ fun ShopScreen(
                         .clip(com.example.computerclub.ui.theme.ShapeXL)
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
-                ) { Text("Фото товара") }
+                ) {
+                    if (p.imageUrl != null) {
+                        AsyncImage(
+                            model = p.imageUrl,
+                            contentDescription = p.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Text("Фото товара")
+                    }
+                }
 
                 Text(
                     text = p.title,
@@ -471,7 +484,16 @@ private fun ProductTile(
                     .background(imageBg),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Фото", style = MaterialTheme.typography.labelLarge, color = textSecondary)
+                if (product.imageUrl != null) {
+                    AsyncImage(
+                        model = product.imageUrl,
+                        contentDescription = product.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text("Фото", style = MaterialTheme.typography.labelLarge, color = textSecondary)
+                }
             }
 
             Text(

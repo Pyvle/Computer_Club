@@ -20,6 +20,7 @@ import { Outlet, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import SetPasswordModal from './SetPasswordModal'
 import { tokens } from '../theme/tokens'
+import { getOwnerNavKeys, getSelectedClubNavKey } from '../utils/adminNavigation'
 
 const { Sider, Header, Content } = Layout
 
@@ -105,8 +106,7 @@ export default function OwnerLayout() {
   }
 
   // более надёжный поиск активного ключа — проверяем все сегменты пути
-  const pathParts = location.pathname.split('/')
-  const selectedClubNavKey = CLUB_NAV_KEYS.find((key) => pathParts.includes(key)) ?? ''
+  const selectedClubNavKey = getSelectedClubNavKey(location.pathname, getOwnerNavKeys(isOwner))
   const isMyClubs = location.pathname === '/admin/my-clubs'
 
   return (
@@ -114,7 +114,16 @@ export default function OwnerLayout() {
       <Sider
         width={224}
         className="admin-sider"
-        style={{ background: tokens.colors.surface, display: 'flex', flexDirection: 'column' }}
+        style={{
+          background: tokens.colors.surface,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100vh',
+          height: '100vh',
+          position: 'sticky',
+          top: 0,
+          alignSelf: 'flex-start',
+        }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {/* Логотип */}

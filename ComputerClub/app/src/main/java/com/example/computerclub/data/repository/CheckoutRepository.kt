@@ -3,6 +3,7 @@ package com.example.computerclub.data.repository
 import com.example.computerclub.data.network.CheckoutApi
 import com.example.computerclub.data.network.dto.CheckoutRequestDto
 import com.example.computerclub.data.network.dto.CheckoutResponseDto
+import com.example.computerclub.data.network.dto.MyBookingHistoryItemDto
 import com.example.computerclub.data.network.dto.PurchaseDetailsDto
 import com.example.computerclub.data.network.dto.PurchaseListItemDto
 
@@ -11,6 +12,8 @@ class CheckoutRepository(private val api: CheckoutApi) {
         api.checkout(idempotencyKey, CheckoutRequestDto(clubId))
 
     suspend fun getMyPurchases(): List<PurchaseListItemDto> = api.getMyPurchases()
+
+    suspend fun getMyBookings(): List<MyBookingHistoryItemDto> = api.getMyBookings()
 
     suspend fun getPurchaseDetails(id: Long): PurchaseDetailsDto = api.getPurchaseDetails(id)
 

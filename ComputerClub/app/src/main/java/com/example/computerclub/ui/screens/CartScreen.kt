@@ -38,6 +38,8 @@ fun CartScreen(
 
     LaunchedEffect(appVm.selectedClubId, appVm.user, club?.isBlocked) {
         if (appVm.user != null && club != null && !club.isBlocked) {
+            appVm.loadTimePackages(force = false)
+            appVm.loadSeatPrices(force = false)
             appVm.syncCartProducts(force = false)
         }
     }

@@ -4,6 +4,7 @@ import com.club.backend.api.dto.admin.DashboardBookingPreview
 import com.club.backend.domain.entity.BookingEntity
 import com.club.backend.domain.enum.BookingStatus
 import com.club.backend.repository.projection.BusySeatProjection
+import com.club.backend.repository.projection.SeatBookingWindowProjection
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
@@ -29,6 +30,22 @@ interface BookingRepository : JpaRepository<BookingEntity, Long> {
         @Param("startAt") startAt: LocalDateTime,
         @Param("endAt") endAt: LocalDateTime
     ): List<BusySeatProjection>
+
+    @Query(
+        """
+        select bs.seat.id as seatId, b.startAt as startAt, b.endAt as endAt
+        from BookingEntity b
+        join b.seats bs
+        where b.club.id = :clubId
+          and b.status in ('UPCOMING', 'ACTIVE')
+          and b.endAt > :from
+        order by bs.seat.id asc, b.startAt asc, b.endAt asc
+        """
+    )
+    fun findSeatBookingWindowsAfter(
+        @Param("clubId") clubId: Long,
+        @Param("from") from: LocalDateTime
+    ): List<SeatBookingWindowProjection>
 
     /**
      * Возвращает все брони клуба для отчётов с предзагрузкой связей.
@@ -157,6 +174,7 @@ interface BookingRepository : JpaRepository<BookingEntity, Long> {
     @Query("""
         select distinct b from BookingEntity b
         join fetch b.club
+        left join fetch b.purchase p
         left join fetch b.seats bs
         left join fetch bs.seat s
         where b.user.id = :userId

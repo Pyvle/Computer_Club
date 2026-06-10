@@ -9,6 +9,7 @@ import {
   CalendarOutlined,
 } from '@ant-design/icons'
 import apiClient from '../../../utils/apiClient'
+import { filterClubs } from '../../../utils/clubsFilters'
 import { useAuth } from '../../../contexts/AuthContext'
 import ClubsMap from '../../../components/ClubsMap'
 import PageHeader from '../../../components/ui/PageHeader'
@@ -239,17 +240,7 @@ export default function ClubsListPage() {
   }, [isLoggedIn])
 
   const filtered = useMemo(() => {
-    let result = clubs
-    const q = search.trim().toLowerCase()
-    if (q) {
-      result = result.filter(
-        (c) => c.name.toLowerCase().includes(q) || c.address.toLowerCase().includes(q),
-      )
-    }
-    if (onlyFavorites) {
-      result = result.filter((c) => favorites.has(c.id))
-    }
-    return result
+    return filterClubs(clubs, search, onlyFavorites, favorites)
   }, [clubs, search, onlyFavorites, favorites])
 
   async function toggleFavorite(clubId: number, isFav: boolean) {

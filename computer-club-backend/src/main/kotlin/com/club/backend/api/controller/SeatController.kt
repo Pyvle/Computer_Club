@@ -2,6 +2,8 @@ package com.club.backend.api.controller
 
 import com.club.backend.api.dto.SeatAvailabilityRequest
 import com.club.backend.api.dto.SeatAvailabilityResponse
+import com.club.backend.api.dto.SeatMaxAvailabilityRequest
+import com.club.backend.api.dto.SeatMaxAvailabilityResponse
 import com.club.backend.api.dto.SeatResponse
 import com.club.backend.service.SeatService
 import jakarta.validation.Valid
@@ -27,4 +29,11 @@ class SeatController(
         @Valid @RequestBody request: SeatAvailabilityRequest
     ): List<SeatAvailabilityResponse> =
         seatService.getAvailability(currentUserIdOrNull(), clubId, request.startAt, request.endAt)
+
+    @PostMapping("/max-availability")
+    fun getMaxAvailability(
+        @PathVariable clubId: Long,
+        @Valid @RequestBody request: SeatMaxAvailabilityRequest
+    ): List<SeatMaxAvailabilityResponse> =
+        seatService.getMaxAvailability(currentUserIdOrNull(), clubId, request.startAt)
 }

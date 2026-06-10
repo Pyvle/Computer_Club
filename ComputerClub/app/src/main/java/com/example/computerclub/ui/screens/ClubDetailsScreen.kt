@@ -37,7 +37,7 @@ import com.example.computerclub.ui.components.ChipTone
 import com.example.computerclub.ui.theme.*
 import com.example.computerclub.vm.AppViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ClubDetailsScreen(
     clubId: String,
@@ -99,7 +99,7 @@ fun ClubDetailsScreen(
                             Icon(
                                 imageVector = if (isFav) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                                 contentDescription = "Избранное",
-                                tint = if (isFav) BrandIndigo else TextSecondary
+                                tint = if (isFav) FavoriteAccentDeep else TextSecondary
                             )
                         }
                     }

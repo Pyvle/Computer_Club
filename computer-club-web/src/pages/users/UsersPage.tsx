@@ -12,6 +12,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import apiClient from '../../utils/apiClient'
+import { buildUserStats, getAdminUsers, getAppUsers } from '../../utils/adminUsers'
 import type { AdminUserResponse, CreateUserRequest, GlobalRole } from '../../types'
 import { tokens } from '../../theme/tokens'
 import PageHeader from '../../components/ui/PageHeader'
@@ -172,28 +173,18 @@ export default function UsersPage() {
 
   // --- Статистика ---
 
-  const stats = useMemo(() => ({
-    total:    users.length,
-    active:   users.filter((u) => u.isActive).length,
-    admins:   users.filter((u) => u.globalRole === 'GLOBAL_ADMIN').length,
-    appUsers: users.filter((u) => u.globalRole !== 'GLOBAL_ADMIN').length,
-  }), [users])
+  const stats = useMemo(() => buildUserStats(users), [users])
 
   // --- Фильтрация ---
 
-  function applyFilters(list: AdminUserResponse[]) {
-    let result = list
-    if (activeFilter === 'active')   result = result.filter((u) => u.isActive)
-    if (activeFilter === 'inactive') result = result.filter((u) => !u.isActive)
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      result = result.filter((u) => (u.phone ?? '').toLowerCase().includes(q) || String(u.id).includes(q))
-    }
-    return result
-  }
-
-  const admins   = useMemo(() => applyFilters(users.filter((u) => u.hasPassword)),              [users, activeFilter, search])
-  const appUsers = useMemo(() => applyFilters(users.filter((u) => u.globalRole !== 'GLOBAL_ADMIN')), [users, activeFilter, search])
+  const admins = useMemo(
+    () => getAdminUsers(users, activeFilter, search),
+    [users, activeFilter, search],
+  )
+  const appUsers = useMemo(
+    () => getAppUsers(users, activeFilter, search),
+    [users, activeFilter, search],
+  )
 
   // --- Переключатель активности ---
 

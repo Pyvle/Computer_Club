@@ -25,7 +25,7 @@ class GlobalAdminService(
     private val purchaseRepository: PurchaseRepository,
     private val clubUserBlockRepository: ClubUserBlockRepository,
     private val productOrderItemRepository: ProductOrderItemRepository,
-    private val clubUserReportRepository: ClubUserReportRepository,
+    private val clubMessageRepository: ClubMessageRepository,
     private val passwordEncoder: BCryptPasswordEncoder
 ) {
 
@@ -197,13 +197,13 @@ class GlobalAdminService(
     @Transactional(readOnly = true)
     fun getUserAllReports(userId: Long): List<GlobalAdminUserReportItem> {
         userRepository.findById(userId).orElseThrow { EntityNotFoundException("User not found") }
-        return clubUserReportRepository.findAllByUserIdFetch(userId).map { r ->
+        return clubMessageRepository.findAllReportsByUserIdFetch(userId).map { r ->
             GlobalAdminUserReportItem(
-                reportId  = r.id,
+                reportId  = r.id!!,
                 clubId    = r.club.id!!,
                 clubName  = r.club.name,
                 message   = r.message,
-                status    = r.status.name,
+                status    = r.status!!.name,
                 createdAt = r.createdAt
             )
         }
@@ -275,10 +275,10 @@ class GlobalAdminService(
             )
         }
 
-        val productOrder = items.firstOrNull()?.productOrder?.let { po ->
+        val productOrder = if (items.isNotEmpty()) {
             AdminPurchaseProductOrderDetail(
-                orderId  = po.id!!,
-                totalRub = po.totalRubSnapshot,
+                orderId  = items.first().productOrderIdSnapshot ?: purchase.id!!,
+                totalRub = purchase.productsTotalRub,
                 items    = items.map { i ->
                     AdminPurchaseOrderItemDetail(
                         title       = i.titleSnapshot,
@@ -288,7 +288,7 @@ class GlobalAdminService(
                     )
                 }
             )
-        }
+        } else null
 
         return AdminPurchaseDetailResponse(
             id               = purchase.id!!,

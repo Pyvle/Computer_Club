@@ -20,6 +20,7 @@ import apiClient from '../../../utils/apiClient'
 import { useAuth } from '../../../contexts/AuthContext'
 import SectionCard from '../../../components/ui/SectionCard'
 import { tokens } from '../../../theme/tokens'
+import { resolveMediaUrl } from '../../../utils/media'
 import type {
   ClubListItemResponse,
   SeatSpecResponse,
@@ -491,43 +492,47 @@ function ProductsPreview({
         gap: 10,
         marginBottom: 14,
       }}>
-        {preview.map((product) => (
-          <div
-            key={product.productId}
-            style={{
-              background: tokens.colors.surfaceAlt,
-              border: `1px solid ${tokens.colors.border}`,
-              borderRadius: tokens.radius.md,
-              overflow: 'hidden',
-            }}
-          >
-            {product.imageUrl ? (
-              <img
-                src={product.imageUrl}
-                alt={product.title}
-                style={{ width: '100%', height: 80, objectFit: 'cover', display: 'block' }}
-              />
-            ) : (
-              <div style={{
-                height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: tokens.colors.primarySoft,
-              }}>
-                <ShoppingOutlined style={{ fontSize: 24, color: tokens.colors.primary, opacity: 0.4 }} />
-              </div>
-            )}
-            <div style={{ padding: '8px 10px' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: tokens.colors.text, marginBottom: 2, lineHeight: 1.3 }}>
-                {product.title}
-              </div>
-              <div style={{ fontSize: 11, color: tokens.colors.textMuted, marginBottom: 4 }}>
-                {product.categoryTitle}
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: tokens.colors.primary }}>
-                {product.priceRub} ₽
+        {preview.map((product) => {
+          const imageUrl = resolveMediaUrl(product.imageUrl)
+
+          return (
+            <div
+              key={product.productId}
+              style={{
+                background: tokens.colors.surfaceAlt,
+                border: `1px solid ${tokens.colors.border}`,
+                borderRadius: tokens.radius.md,
+                overflow: 'hidden',
+              }}
+            >
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt={product.title}
+                  style={{ width: '100%', height: 80, objectFit: 'cover', display: 'block' }}
+                />
+              ) : (
+                <div style={{
+                  height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: tokens.colors.primarySoft,
+                }}>
+                  <ShoppingOutlined style={{ fontSize: 24, color: tokens.colors.primary, opacity: 0.4 }} />
+                </div>
+              )}
+              <div style={{ padding: '8px 10px' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: tokens.colors.text, marginBottom: 2, lineHeight: 1.3 }}>
+                  {product.title}
+                </div>
+                <div style={{ fontSize: 11, color: tokens.colors.textMuted, marginBottom: 4 }}>
+                  {product.categoryTitle}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: tokens.colors.primary }}>
+                  {product.priceRub} ₽
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
       <div style={{ fontSize: 12, color: tokens.colors.textMuted }}>
         Товары можно добавить в корзину вместе с бронированием

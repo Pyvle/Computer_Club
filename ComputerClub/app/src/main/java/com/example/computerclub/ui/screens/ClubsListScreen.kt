@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Map
@@ -167,10 +168,16 @@ fun ClubsListScreen(
         if (mapMode) {
             ClubsMap(
                 clubs = currentList,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
                 onClubClick = { onOpenClub(it.id) }
             )
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 items(currentList, key = { it.id }) { club ->
                     ClubCard(
                         club = club,
@@ -187,6 +194,7 @@ fun ClubsListScreen(
 @Composable
 private fun ClubsMap(
     clubs: List<Club>,
+    modifier: Modifier = Modifier,
     onClubClick: (Club) -> Unit
 ) {
     val context = LocalContext.current
@@ -196,7 +204,7 @@ private fun ClubsMap(
 
     if (clubsWithCoords.isEmpty()) {
         Box(
-            modifier = Modifier.fillMaxWidth().height(420.dp),
+            modifier = modifier,
             contentAlignment = Alignment.Center
         ) {
             Text("Координаты клубов не указаны")
@@ -269,7 +277,7 @@ private fun ClubsMap(
                 placemark.addTapListener(listener)
             }
         },
-        modifier = Modifier.fillMaxWidth().height(420.dp)
+        modifier = modifier
     )
 }
 
@@ -335,15 +343,24 @@ private fun ClubCard(
             }
 
             // кнопка избранного поверх изображения
-            IconButton(
+            FilledIconButton(
                 onClick = onToggleFavorite,
-                modifier = Modifier.align(Alignment.TopEnd)
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(10.dp)
+                    .size(38.dp),
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = com.example.computerclub.ui.theme.AppSurface.copy(alpha = 0.92f),
+                    contentColor = if (isFavorite) com.example.computerclub.ui.theme.FavoriteAccentDeep
+                    else com.example.computerclub.ui.theme.TextSecondary
+                )
             ) {
                 Icon(
                     imageVector = if (isFavorite) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                     contentDescription = "Избранное",
-                    tint = if (isFavorite) com.example.computerclub.ui.theme.BrandIndigo
-                    else com.example.computerclub.ui.theme.TextMuted
+                    tint = if (isFavorite) com.example.computerclub.ui.theme.FavoriteAccentDeep
+                    else com.example.computerclub.ui.theme.TextSecondary
                 )
             }
         }

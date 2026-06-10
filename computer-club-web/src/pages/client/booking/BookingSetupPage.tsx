@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons'
 import dayjs, { Dayjs } from 'dayjs'
 import apiClient from '../../../utils/apiClient'
+import { calculateEstimatedBookingPrice } from '../../../utils/clientBooking'
 import { useClient } from '../../../contexts/ClientContext'
 import SectionCard from '../../../components/ui/SectionCard'
 import StepBar from '../../../components/ui/StepBar'
@@ -234,8 +235,13 @@ export default function BookingSetupPage() {
 
   const durationMinutes = startTime && endTime ? endTime.diff(startTime, 'minute') : null
   const durationHours = durationMinutes !== null && durationMinutes > 0 ? durationMinutes / 60 : null
-  const minPrice = seatPrices.length > 0 ? Math.min(...seatPrices.map((p) => p.pricePerHourRub)) : null
-  const estimatedPrice = durationHours && minPrice ? Math.round(durationHours * minPrice) : null
+  const selectedPackage = packages.find((p) => p.id === selectedPackageId) ?? null
+  const estimatedPrice = calculateEstimatedBookingPrice(
+    durationHours,
+    seatPrices,
+    packages,
+    selectedPackage?.hours ?? null,
+  )
   const canProceed = !!(date && startTime && endTime && durationMinutes !== null && durationMinutes > 0)
 
   function handleStartTimeChange(t: Dayjs | null) {
@@ -243,6 +249,8 @@ export default function BookingSetupPage() {
     // пересчитываем конец если пресет активен
     if (t && durationPreset) {
       setEndTime(t.add(durationPreset, 'hour'))
+    } else if (t && selectedPackage) {
+      setEndTime(t.add(selectedPackage.hours, 'hour'))
     }
   }
 
@@ -282,15 +290,14 @@ export default function BookingSetupPage() {
       message.warning('Время окончания должно быть позже начала')
       return
     }
-    const selectedPkg = packages.find((p) => p.id === selectedPackageId) ?? null
     setBookingDraft({
       clubId,
       clubName,
       date: date.format('YYYY-MM-DD'),
       startTime: startTime.format('HH:mm'),
       endTime: endTime.format('HH:mm'),
-      packageId: selectedPkg?.id ?? null,
-      packageHours: selectedPkg?.hours ?? null,
+      packageId: selectedPackage?.id ?? null,
+      packageHours: selectedPackage?.hours ?? null,
       selectedSeatIds: [],
     })
     navigate(`/clubs/${clubId}/booking/seats`)

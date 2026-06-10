@@ -4,7 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,12 +17,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.computerclub.model.CartBookingLine
 import com.example.computerclub.model.Seat
 import com.example.computerclub.model.SeatAvailability
 import com.example.computerclub.model.SeatType
@@ -38,8 +40,8 @@ import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
-import kotlin.math.ceil
 
 private const val DAY_MIN = 24 * 60
 
@@ -52,11 +54,32 @@ private enum class SeatKind { FREE, BOOKED, SELECTED }
 
 private enum class SeatsSheetKind { INFO, MAX_TIME }
 
+private enum class SeatMaxTimeState { UNKNOWN, UNAVAILABLE, LIMITED, OPEN_ENDED }
+
+private data class PlanBounds(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+) {
+    val width: Float get() = (right - left).coerceAtLeast(0f)
+    val height: Float get() = (bottom - top).coerceAtLeast(0f)
+}
+
+private data class SeatHitArea(
+    val seat: Seat,
+    val leftDp: Float,
+    val topDp: Float,
+    val rightDp: Float,
+    val bottomDp: Float,
+)
+
 private data class SeatMaxTimeRow(
     val seat: Seat,
-    val maxMin: Int,          // сколько минут максимум можно держать от выбранного старта
-    val untilLabel: String,   // до какого времени
-    val maxLabel: String      // формат “1д 2ч 30м”
+    val state: SeatMaxTimeState,
+    val maxMin: Int? = null,
+    val untilLabel: String? = null,
+    val maxLabel: String? = null
 )
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -106,9 +129,6 @@ fun BookingSeatsScreen(
     var userScale by remember { mutableStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var userHasZoomed by remember { mutableStateOf(false) }
-    fun zoomIn() { userHasZoomed = true; userScale = (userScale * 1.15f).coerceIn(0.5f, 5f) }
-    fun zoomOut() { userHasZoomed = true; userScale = (userScale / 1.15f).coerceIn(0.5f, 5f) }
-    fun resetView() { userScale = fitScale; pan = fitPan; userHasZoomed = false }
 
     // layout берём из опубликованной схемы (если есть) — иначе fallback на алгоритм по умолчанию
     val layout: List<FloorplanSeatPos> = remember(seats, appVm.floorplanSeats) {
@@ -124,9 +144,15 @@ fun BookingSeatsScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // --- подготовка данных для шторки “макс. время” ---
-    val startMinOfDay = draft.startMin
-    val maxTimeRows by remember(seats, startMinOfDay, appVm.busySeatIds) {
-        mutableStateOf(buildMaxTimeRows(seats, startMinOfDay, appVm.busySeatIds))
+    val bookingLinesSnapshot = appVm.bookingCartLines.toList()
+    val maxTimeRows = remember(seats, startDt, appVm.seatMaxAvailabilityBySeatId, bookingLinesSnapshot, appVm.editingBookingId) {
+        buildMaxTimeRows(
+            seats = seats,
+            startAt = startDt,
+            seatMaxAvailabilityBySeatId = appVm.seatMaxAvailabilityBySeatId,
+            bookingLines = bookingLinesSnapshot,
+            editingBookingId = appVm.editingBookingId
+        )
     }
 
     Scaffold(
@@ -166,7 +192,7 @@ fun BookingSeatsScreen(
                     Icon(
                         imageVector = if (isFav) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                         contentDescription = "Избранное",
-                        tint = if (isFav) com.example.computerclub.ui.theme.BrandIndigo
+                        tint = if (isFav) com.example.computerclub.ui.theme.FavoriteAccentDeep
                                else com.example.computerclub.ui.theme.TextMuted
                     )
                 }
@@ -196,11 +222,50 @@ fun BookingSeatsScreen(
 
                     val density = LocalDensity.current.density
 
-                    // вычисляем масштаб, при котором весь контент помещается в контейнер
-                    val computedFitScale = remember(layout, planW, planH) {
-                        if (layout.isEmpty() || planW.value == 0f || planH.value == 0f) return@remember 1f
+                    val numCols = appVm.floorplanNumCols
+                    val numRows = appVm.floorplanNumRows
+                    val wallThickness = 4f
+
+                    // вычисляем реальные границы схемы, чтобы стартовый fit охватывал весь зал
+                    val contentBounds = remember(layout, floor, walls, numCols, numRows, planW, planH) {
+                        if (planW.value == 0f || planH.value == 0f) {
+                            return@remember PlanBounds(0f, 0f, 0f, 0f)
+                        }
+                        var minLeft = Float.POSITIVE_INFINITY
+                        var minTop = Float.POSITIVE_INFINITY
                         var maxRight = 0f
                         var maxBottom = 0f
+
+                        if ((floor.isNotEmpty() || walls.isNotEmpty()) && numCols > 0 && numRows > 0) {
+                            val naturalCellW = planW.value / numCols
+                            val naturalCellH = planH.value / numRows
+                            val scaledCellW = naturalCellW.coerceIn(56f, 96f)
+                            val scaledCellH = naturalCellH.coerceIn(56f, 96f)
+
+                            floor.forEach { f ->
+                                minLeft = minOf(minLeft, f.col * scaledCellW)
+                                minTop = minOf(minTop, f.row * scaledCellH)
+                                maxRight = maxOf(maxRight, (f.col + 1) * scaledCellW)
+                                maxBottom = maxOf(maxBottom, (f.row + 1) * scaledCellH)
+                            }
+                            walls.forEach { w ->
+                                when (w.orientation) {
+                                    WallOrientation.H -> {
+                                        minLeft = minOf(minLeft, w.col * scaledCellW)
+                                        minTop = minOf(minTop, w.row * scaledCellH - wallThickness / 2f)
+                                        maxRight = maxOf(maxRight, (w.col + 1) * scaledCellW)
+                                        maxBottom = maxOf(maxBottom, w.row * scaledCellH + wallThickness / 2f)
+                                    }
+                                    WallOrientation.V -> {
+                                        minLeft = minOf(minLeft, w.col * scaledCellW - wallThickness / 2f)
+                                        minTop = minOf(minTop, w.row * scaledCellH)
+                                        maxRight = maxOf(maxRight, w.col * scaledCellW + wallThickness / 2f)
+                                        maxBottom = maxOf(maxBottom, (w.row + 1) * scaledCellH)
+                                    }
+                                }
+                            }
+                        }
+
                         layout.forEach { p ->
                             val nW = planW.value * p.w
                             val nH = planH.value * p.h
@@ -208,22 +273,78 @@ fun BookingSeatsScreen(
                             val sH = nH.coerceIn(56f, 96f)
                             val sx = if (nW > 0f) sW / nW else 1f
                             val sy = if (nH > 0f) sH / nH else 1f
-                            maxRight = maxOf(maxRight, planW.value * p.x * sx + sW)
-                            maxBottom = maxOf(maxBottom, planH.value * p.y * sy + sH)
+                            val left = planW.value * p.x * sx
+                            val top = planH.value * p.y * sy
+                            minLeft = minOf(minLeft, left)
+                            minTop = minOf(minTop, top)
+                            maxRight = maxOf(maxRight, left + sW)
+                            maxBottom = maxOf(maxBottom, top + sH)
                         }
-                        if (maxRight > 0f && maxBottom > 0f)
-                            minOf(planW.value / maxRight, planH.value / maxBottom, 1f)
-                        else 1f
+
+                        if (minLeft == Float.POSITIVE_INFINITY || minTop == Float.POSITIVE_INFINITY) {
+                            PlanBounds(0f, 0f, 0f, 0f)
+                        } else {
+                            PlanBounds(minLeft, minTop, maxRight, maxBottom)
+                        }
                     }
 
-                    // graphicsLayer масштабирует от центра контейнера —
-                    // нужен pan-офсет чтобы содержимое (начинающееся от левого/верхнего края) стало видно
-                    // panX = planW/2 * (scale - 1), переведено в пиксели
-                    val computedFitPan = remember(computedFitScale, planW, planH, density) {
-                        Offset(
-                            planW.value * density / 2f * (computedFitScale - 1f),
-                            planH.value * density / 2f * (computedFitScale - 1f)
+                    // подгоняем схему в контейнер и центрируем её
+                    val computedFitScale = remember(contentBounds, planW, planH) {
+                        if (contentBounds.width <= 0f || contentBounds.height <= 0f || planW.value == 0f || planH.value == 0f) {
+                            1f
+                        } else {
+                            minOf(
+                                planW.value / contentBounds.width,
+                                planH.value / contentBounds.height,
+                                1f
+                            ).coerceAtLeast(0.2f)
+                        }
+                    }
+
+                    val computedFitPan = remember(contentBounds, computedFitScale, planW, planH, density) {
+                        clampPan(
+                            pan = Offset(
+                                ((planW.value - contentBounds.width * computedFitScale) / 2f - contentBounds.left * computedFitScale) * density,
+                                ((planH.value - contentBounds.height * computedFitScale) / 2f - contentBounds.top * computedFitScale) * density
+                            ),
+                            bounds = contentBounds,
+                            scale = computedFitScale,
+                            viewportWidthDp = planW.value,
+                            viewportHeightDp = planH.value,
+                            density = density
                         )
+                    }
+
+                    val seatHitAreas = remember(layout, seatsById, planW, planH) {
+                        layout.mapNotNull { p ->
+                            val seat = seatsById[p.seatId] ?: return@mapNotNull null
+                            val naturalW = planW.value * p.w
+                            val naturalH = planH.value * p.h
+                            val seatW = naturalW.coerceIn(56f, 96f)
+                            val seatH = naturalH.coerceIn(56f, 96f)
+                            val scaleX = if (naturalW > 0f) seatW / naturalW else 1f
+                            val scaleY = if (naturalH > 0f) seatH / naturalH else 1f
+                            val left = planW.value * p.x * scaleX
+                            val top = planH.value * p.y * scaleY
+                            SeatHitArea(
+                                seat = seat,
+                                leftDp = left,
+                                topDp = top,
+                                rightDp = left + seatW,
+                                bottomDp = top + seatH
+                            )
+                        }
+                    }
+
+                    fun seatAt(pointer: Offset): Seat? {
+                        val hitPointDp = Offset(
+                            x = (pointer.x - pan.x) / (userScale * density),
+                            y = (pointer.y - pan.y) / (userScale * density)
+                        )
+                        return seatHitAreas.lastOrNull { hit ->
+                            hitPointDp.x in hit.leftDp..hit.rightDp &&
+                                hitPointDp.y in hit.topDp..hit.bottomDp
+                        }?.seat
                     }
 
                     // применяем автоматически, пока пользователь не начал зумировать вручную
@@ -236,138 +357,185 @@ fun BookingSeatsScreen(
                         }
                     }
 
+                    fun scaleAroundViewport(scaleFactor: Float) {
+                        val oldScale = userScale
+                        val newScale = (oldScale * scaleFactor).coerceIn(0.2f, 5f)
+                        val viewportCenter = Offset(
+                            x = planW.value * density / 2f,
+                            y = planH.value * density / 2f
+                        )
+                        val contentPoint = (viewportCenter - pan) / oldScale
+                        val newPan = viewportCenter - contentPoint * newScale
+
+                        userHasZoomed = true
+                        userScale = newScale
+                        pan = clampPan(
+                            pan = newPan,
+                            bounds = contentBounds,
+                            scale = newScale,
+                            viewportWidthDp = planW.value,
+                            viewportHeightDp = planH.value,
+                            density = density
+                        )
+                    }
+
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .graphicsLayer {
-                                scaleX = userScale
-                                scaleY = userScale
-                                translationX = pan.x
-                                translationY = pan.y
-                            }
-                            .pointerInput(Unit) {
-                                detectTransformGestures { _, panChange, zoom, _ ->
+                            .pointerInput(contentBounds, planW.value, planH.value, density) {
+                                detectTransformGestures { centroid, panChange, zoomChange, _ ->
                                     userHasZoomed = true
-                                    userScale = (userScale * zoom).coerceIn(0.5f, 5f)
-                                    pan += panChange
+                                    val oldScale = userScale
+                                    val newScale = (oldScale * zoomChange).coerceIn(0.2f, 5f)
+                                    val contentPoint = (centroid - pan) / oldScale
+                                    val newPan = centroid - contentPoint * newScale + panChange
+
+                                    userScale = newScale
+                                    pan = clampPan(
+                                        pan = newPan,
+                                        bounds = contentBounds,
+                                        scale = newScale,
+                                        viewportWidthDp = planW.value,
+                                        viewportHeightDp = planH.value,
+                                        density = density
+                                    )
                                 }
+                            }
+                            .pointerInput(seatHitAreas, userScale, pan, density) {
+                                detectTapGestures(
+                                    onTap = { pointer ->
+                                        val hitSeat = seatAt(pointer) ?: return@detectTapGestures
+                                        val selectedSeat = draft.selectedSeatIds.contains(hitSeat.id)
+                                        val isBooked = appVm.busySeatIds.contains(hitSeat.id)
+                                        if (!isBooked || selectedSeat) {
+                                            appVm.toggleSeat(hitSeat.id)
+                                        }
+                                    },
+                                    onLongPress = { pointer ->
+                                        val hitSeat = seatAt(pointer) ?: return@detectTapGestures
+                                        seatInfo = "${hitSeat.label}\n${hitSeat.equipment}"
+                                    }
+                                )
                             }
                     ) {
-                        // пол комнат — под стенами и местами
-                        val numCols = appVm.floorplanNumCols
-                        val numRows = appVm.floorplanNumRows
-                        if ((floor.isNotEmpty() || walls.isNotEmpty()) && numCols > 0 && numRows > 0) {
-                            val naturalCellW = planW.value / numCols
-                            val naturalCellH = planH.value / numRows
-                            val scaledCellW = naturalCellW.coerceIn(56f, 96f)
-                            val scaledCellH = naturalCellH.coerceIn(56f, 96f)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    transformOrigin = TransformOrigin(0f, 0f)
+                                    scaleX = userScale
+                                    scaleY = userScale
+                                    translationX = pan.x
+                                    translationY = pan.y
+                                }
+                        ) {
+                            // пол комнат — под стенами и местами
+                            if ((floor.isNotEmpty() || walls.isNotEmpty()) && numCols > 0 && numRows > 0) {
+                                val naturalCellW = planW.value / numCols
+                                val naturalCellH = planH.value / numRows
+                                val scaledCellW = naturalCellW.coerceIn(56f, 96f)
+                                val scaledCellH = naturalCellH.coerceIn(56f, 96f)
 
-                            floor.forEach { f ->
-                                val bg = if (f.roomType == "VIP") Color(0xFFFFF3CD) else Color(0xFFF5F5F5)
-                                Box(
-                                    Modifier
-                                        .offset(
-                                            x = (f.col * scaledCellW).dp,
-                                            y = (f.row * scaledCellH).dp
+                                floor.forEach { f ->
+                                    val bg = if (f.roomType == "VIP") Color(0xFFFFF3CD) else Color(0xFFF5F5F5)
+                                    Box(
+                                        Modifier
+                                            .offset(
+                                                x = (f.col * scaledCellW).dp,
+                                                y = (f.row * scaledCellH).dp
+                                            )
+                                            .size(width = scaledCellW.dp, height = scaledCellH.dp)
+                                            .background(bg)
+                                    )
+                                }
+                            }
+                            if (walls.isNotEmpty() && numCols > 0 && numRows > 0) {
+                                val naturalCellW = planW.value / numCols
+                                val naturalCellH = planH.value / numRows
+                                val scaledCellW = naturalCellW.coerceIn(56f, 96f)
+                                val scaledCellH = naturalCellH.coerceIn(56f, 96f)
+
+                                walls.forEach { w ->
+                                    when (w.orientation) {
+                                        WallOrientation.H -> Box(
+                                            Modifier
+                                                .offset(
+                                                    x = (w.col * scaledCellW).dp,
+                                                    y = (w.row * scaledCellH - wallThickness / 2).dp
+                                                )
+                                                .size(width = scaledCellW.dp, height = wallThickness.dp)
+                                                .clip(RoundedCornerShape(2.dp))
+                                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                                         )
-                                        .size(width = scaledCellW.dp, height = scaledCellH.dp)
-                                        .background(bg)
-                                )
-                            }
-                        }
-                        if (walls.isNotEmpty() && numCols > 0 && numRows > 0) {
-                            val naturalCellW = planW.value / numCols
-                            val naturalCellH = planH.value / numRows
-                            val scaledCellW = naturalCellW.coerceIn(56f, 96f)
-                            val scaledCellH = naturalCellH.coerceIn(56f, 96f)
-                            val wallThickness = 4f
-
-                            walls.forEach { w ->
-                                when (w.orientation) {
-                                    WallOrientation.H -> Box(
-                                        Modifier
-                                            .offset(
-                                                x = (w.col * scaledCellW).dp,
-                                                y = (w.row * scaledCellH - wallThickness / 2).dp
-                                            )
-                                            .size(width = scaledCellW.dp, height = wallThickness.dp)
-                                            .clip(RoundedCornerShape(2.dp))
-                                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                                    )
-                                    WallOrientation.V -> Box(
-                                        Modifier
-                                            .offset(
-                                                x = (w.col * scaledCellW - wallThickness / 2).dp,
-                                                y = (w.row * scaledCellH).dp
-                                            )
-                                            .size(width = wallThickness.dp, height = scaledCellH.dp)
-                                            .clip(RoundedCornerShape(2.dp))
-                                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                                    )
+                                        WallOrientation.V -> Box(
+                                            Modifier
+                                                .offset(
+                                                    x = (w.col * scaledCellW - wallThickness / 2).dp,
+                                                    y = (w.row * scaledCellH).dp
+                                                )
+                                                .size(width = wallThickness.dp, height = scaledCellH.dp)
+                                                .clip(RoundedCornerShape(2.dp))
+                                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                        )
+                                    }
                                 }
                             }
-                        }
 
-                        layout.forEach { p ->
-                            val seat = seatsById[p.seatId] ?: return@forEach
-                            val selectedSeat = draft.selectedSeatIds.contains(seat.id)
-                            // доступность приходит с сервера: любое занятое = BOOKED
-                            val isBooked = appVm.busySeatIds.contains(seat.id)
+                            layout.forEach { p ->
+                                val seat = seatsById[p.seatId] ?: return@forEach
+                                val selectedSeat = draft.selectedSeatIds.contains(seat.id)
+                                // доступность приходит с сервера: любое занятое = BOOKED
+                                val isBooked = appVm.busySeatIds.contains(seat.id)
 
-                            // естественный размер из схемы; если меньше 56dp — масштабируем и offset
-                            val naturalW = planW.value * p.w
-                            val naturalH = planH.value * p.h
-                            val seatW = naturalW.coerceIn(56f, 96f).dp
-                            val seatH = naturalH.coerceIn(56f, 96f).dp
-                            // масштаб, применённый к размеру, применяем и к отступу — иначе места перекроются
-                            val scaleX = if (naturalW > 0f) seatW.value / naturalW else 1f
-                            val scaleY = if (naturalH > 0f) seatH.value / naturalH else 1f
+                                // естественный размер из схемы; если меньше 56dp — масштабируем и offset
+                                val naturalW = planW.value * p.w
+                                val naturalH = planH.value * p.h
+                                val seatW = naturalW.coerceIn(56f, 96f).dp
+                                val seatH = naturalH.coerceIn(56f, 96f).dp
+                                // масштаб, применённый к размеру, применяем и к отступу — иначе места перекроются
+                                val scaleX = if (naturalW > 0f) seatW.value / naturalW else 1f
+                                val scaleY = if (naturalH > 0f) seatH.value / naturalH else 1f
 
-                            val baseModifier = Modifier
-                                .offset(
-                                    x = (planW.value * p.x * scaleX).dp,
-                                    y = (planH.value * p.y * scaleY).dp
+                                val baseModifier = Modifier
+                                    .offset(
+                                        x = (planW.value * p.x * scaleX).dp,
+                                        y = (planH.value * p.y * scaleY).dp
+                                    )
+                                    .size(width = seatW, height = seatH)
+
+                                // занятые места не кликабельны; выбранные можно снять
+                                SeatSquare(
+                                    modifier = baseModifier,
+                                    number = seatNumber(seat.label),
+                                    kind = when {
+                                        selectedSeat -> SeatKind.SELECTED
+                                        isBooked -> SeatKind.BOOKED
+                                        else -> SeatKind.FREE
+                                    }
                                 )
-                                .size(width = seatW, height = seatH)
-
-                            // занятые места не кликабельны; выбранные можно снять
-                            val clickModifier = if (!isBooked || selectedSeat) {
-                                baseModifier.combinedClickable(
-                                    onClick = { appVm.toggleSeat(seat.id) },
-                                    onLongClick = { seatInfo = "${seat.label}\n${seat.equipment}" }
-                                )
-                            } else {
-                                baseModifier
                             }
-
-                            SeatSquare(
-                                modifier = clickModifier,
-                                number = seatNumber(seat.label),
-                                kind = when {
-                                    selectedSeat -> SeatKind.SELECTED
-                                    isBooked -> SeatKind.BOOKED
-                                    else -> SeatKind.FREE
-                                }
-                            )
                         }
+                        MapControlsCompact(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(horizontal = 10.dp, vertical = 10.dp),
+                            onZoomOut = { scaleAroundViewport(1f / 1.15f) },
+                            onReset = {
+                                userScale = fitScale
+                                pan = fitPan
+                                userHasZoomed = false
+                            },
+                            onZoomIn = { scaleAroundViewport(1.15f) },
+                            onInfo = { sheetKind = SeatsSheetKind.INFO },
+                            onMaxTime = { sheetKind = SeatsSheetKind.MAX_TIME }
+                        )
                     }
                 }
-
-                // --- Кнопки под схемой ---
-                MapControlsCompact(
-                    modifier = Modifier.fillMaxWidth(),
-                    onZoomOut = ::zoomOut,
-                    onReset = ::resetView,
-                    onZoomIn = ::zoomIn,
-                    onInfo = { sheetKind = SeatsSheetKind.INFO },
-                    onMaxTime = { sheetKind = SeatsSheetKind.MAX_TIME }
-                )
             }
 
             val selectedLabel = remember(draft.selectedSeatIds, seats) { selectedSeatsLabel(draft.selectedSeatIds, seats) }
-            val bookingTotal = remember(draft.selectedSeatIds) {
+            val bookingTotal =
                 if (draft.selectedSeatIds.isNotEmpty()) appVm.bookingTotalRub(draft.selectedSeatIds) else null
-            }
 
             // --- Низ ---
             Row(
@@ -497,8 +665,22 @@ private fun SpecLine(left: String, right: String) {
 
 @Composable
 private fun SeatsMaxTimeSheet(rows: List<SeatMaxTimeRow>) {
-    val vip = remember(rows) { rows.filter { it.seat.type == SeatType.VIP }.sortedByDescending { it.maxMin } }
-    val std = remember(rows) { rows.filter { it.seat.type != SeatType.VIP }.sortedByDescending { it.maxMin } }
+    fun rank(state: SeatMaxTimeState): Int = when (state) {
+        SeatMaxTimeState.OPEN_ENDED -> 0
+        SeatMaxTimeState.LIMITED -> 1
+        SeatMaxTimeState.UNKNOWN -> 2
+        SeatMaxTimeState.UNAVAILABLE -> 3
+    }
+
+    val sortedRows = remember(rows) {
+        rows.sortedWith(
+            compareBy<SeatMaxTimeRow> { rank(it.state) }
+                .thenByDescending { it.maxMin ?: Int.MAX_VALUE }
+                .thenBy { it.seat.label }
+        )
+    }
+    val vip = remember(sortedRows) { sortedRows.filter { it.seat.type == SeatType.VIP } }
+    val std = remember(sortedRows) { sortedRows.filter { it.seat.type != SeatType.VIP } }
 
     Column(
         Modifier
@@ -530,8 +712,13 @@ private fun SeatsMaxTimeSheet(rows: List<SeatMaxTimeRow>) {
 
 @Composable
 private fun MaxTimeRow(r: SeatMaxTimeRow) {
-    val unavailable = r.maxMin <= 0
     val cs = MaterialTheme.colorScheme
+    val (sub, trailing, subColor) = when (r.state) {
+        SeatMaxTimeState.UNAVAILABLE -> Triple("Недоступно на выбранный старт", "—", cs.error)
+        SeatMaxTimeState.OPEN_ENDED -> Triple("На будущее не забронировано", "Свободно", cs.onSurfaceVariant)
+        SeatMaxTimeState.LIMITED -> Triple("Осталось: ${r.maxLabel}", "До ${r.untilLabel}", cs.onSurfaceVariant)
+        SeatMaxTimeState.UNKNOWN -> Triple("Нет данных о будущих бронях", "—", cs.onSurfaceVariant)
+    }
 
     Row(
         Modifier
@@ -546,17 +733,16 @@ private fun MaxTimeRow(r: SeatMaxTimeRow) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            val sub = if (unavailable) "Недоступно на выбранный старт" else "Осталось: ${r.maxLabel}"
             Text(
                 sub,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (unavailable) cs.error else cs.onSurfaceVariant,
+                color = subColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
         Text(
-            if (unavailable) "—" else "До ${r.untilLabel}",
+            trailing,
             style = MaterialTheme.typography.bodyMedium,
             color = cs.onSurfaceVariant,
             textAlign = TextAlign.End
@@ -723,6 +909,33 @@ private fun buildLayoutPercent(seats: List<Seat>): List<FloorplanSeatPos> {
     return out
 }
 
+private fun clampPan(
+    pan: Offset,
+    bounds: PlanBounds,
+    scale: Float,
+    viewportWidthDp: Float,
+    viewportHeightDp: Float,
+    density: Float,
+): Offset {
+    if (bounds.width <= 0f || bounds.height <= 0f) return pan
+
+    val viewportWidthPx = viewportWidthDp * density
+    val viewportHeightPx = viewportHeightDp * density
+    val leftPx = bounds.left * scale * density
+    val topPx = bounds.top * scale * density
+    val rightPx = bounds.right * scale * density
+    val bottomPx = bounds.bottom * scale * density
+    val minX = minOf(viewportWidthPx - rightPx, -leftPx)
+    val maxX = maxOf(viewportWidthPx - rightPx, -leftPx)
+    val minY = minOf(viewportHeightPx - bottomPx, -topPx)
+    val maxY = maxOf(viewportHeightPx - bottomPx, -topPx)
+
+    val targetX = pan.x.coerceIn(minX, maxX)
+    val targetY = pan.y.coerceIn(minY, maxY)
+
+    return Offset(targetX, targetY)
+}
+
 // --- Строка выбранных мест ---
 
 private fun selectedSeatsLabel(selectedIds: Set<String>, seats: List<Seat>): String {
@@ -766,89 +979,59 @@ private fun formatDuration(deltaMin: Int): String {
     return if (h > 0) "${h}ч ${m}м" else "${m}м"
 }
 
-// --- Логика max-time (мок) ---
+// --- Логика max-time ---
 
 private fun buildMaxTimeRows(
     seats: List<Seat>,
-    startMinOfDay: Int,
-    busySeatIds: Set<String>
+    startAt: LocalDateTime,
+    seatMaxAvailabilityBySeatId: Map<String, com.example.computerclub.model.SeatMaxAvailability>,
+    bookingLines: List<CartBookingLine>,
+    editingBookingId: String?
 ): List<SeatMaxTimeRow> {
-    // горизонт: 3 суток, чтобы можно было показать “> дня”
-    val horizonMin = 3 * DAY_MIN
-
     return seats.map { seat ->
-        // сервер даёт занятость только для выбранного интервала — max-time считаем упрощённо:
-        // если место занято — 0, иначе показываем полный горизонт
-        val maxMin = if (seat.id in busySeatIds) 0 else horizonMin
+        val info = seatMaxAvailabilityBySeatId[seat.id]
+        val localWindows = bookingLines
+            .asSequence()
+            .filter { it.id != editingBookingId }
+            .filter { seat.id in it.seatIds }
+            .map { line -> lineStartDateTime(line) to lineEndDateTime(line) }
+            .filter { (_, endAt) -> endAt.isAfter(startAt) }
+            .toList()
 
-        val maxLabel = if (maxMin <= 0) "0м" else formatDurationWithDays(maxMin)
-        val untilLabel = if (maxMin <= 0) "—" else formatUntilTime(startMinOfDay, maxMin)
+        val localBusyAtStart = localWindows.any { (lineStart, lineEnd) ->
+            !lineStart.isAfter(startAt) && lineEnd.isAfter(startAt)
+        }
+        val localNextStart = localWindows
+            .asSequence()
+            .map { it.first }
+            .filter { !it.isBefore(startAt) }
+            .minOrNull()
+        val nextBlockingStart = listOfNotNull(info?.nextBookingStartsAt, localNextStart).minOrNull()
 
-        SeatMaxTimeRow(
-            seat = seat,
-            maxMin = maxMin,
-            untilLabel = untilLabel,
-            maxLabel = maxLabel
-        )
-    }
-}
-
-/**
- * Вычисляет максимальную непрерывную свободную полосу от startMin до ближайшей брони.
- * Брони могут быть “wrap” (23:30–01:00) — разворачиваем в сегменты и дублируем на
- * следующие сутки, чтобы поймать ситуацию: старт 23:30, бронь 00:00–01:00.
- */
-private fun maxContinuousFreeFromStart(
-    startMin: Int,
-    booked: List<TimeRange>,
-    horizonMin: Int
-): Int {
-    if (booked.isEmpty()) return horizonMin
-
-    fun segments(r: TimeRange): List<Pair<Int, Int>> {
-        return if (r.endMin >= r.startMin) listOf(r.startMin to r.endMin)
-        else listOf(r.startMin to DAY_MIN, 0 to r.endMin)
-    }
-
-    val baseSeg = booked.flatMap(::segments)
-        .filter { (s, e) -> s != e }
-        .map { (s, e) -> s.coerceIn(0, DAY_MIN) to e.coerceIn(0, DAY_MIN) }
-
-    if (baseSeg.isEmpty()) return horizonMin
-
-    fun inside(t: Int, seg: Pair<Int, Int>) = t >= seg.first && t < seg.second
-    if (baseSeg.any { inside(startMin, it) }) return 0
-
-    // мок: бронь может продлиться до +2 часов от конца — считаем место недоступным в зоне риска
-    val extSeg = baseSeg.flatMap { (s, e) ->
-        val e2 = e + 120
-        if (e2 <= DAY_MIN) listOf(s to e2)
-        else listOf(s to DAY_MIN, 0 to (e2 - DAY_MIN))
-    }
-    if (extSeg.any { inside(startMin, it) }) return 0
-
-    // дублируем на несколько суток вперёд
-    val days = ceil(horizonMin.toDouble() / DAY_MIN.toDouble()).toInt().coerceAtLeast(1)
-    val all = mutableListOf<Pair<Int, Int>>()
-    for (d in 0..days) {
-        val shift = d * DAY_MIN
-        baseSeg.forEach { (s, e) ->
-            all += (s + shift) to (e + shift)
+        when {
+            localBusyAtStart -> SeatMaxTimeRow(seat = seat, state = SeatMaxTimeState.UNAVAILABLE, maxMin = 0)
+            info?.isAvailableAtStart == false -> SeatMaxTimeRow(seat = seat, state = SeatMaxTimeState.UNAVAILABLE, maxMin = 0)
+            nextBlockingStart != null -> {
+                val maxMin = Duration.between(startAt, nextBlockingStart).toMinutes().coerceAtLeast(0).toInt()
+                SeatMaxTimeRow(
+                    seat = seat,
+                    state = SeatMaxTimeState.LIMITED,
+                    maxMin = maxMin,
+                    untilLabel = formatUntilDateTime(startAt, nextBlockingStart),
+                    maxLabel = formatDurationWithDays(maxMin)
+                )
+            }
+            info == null -> SeatMaxTimeRow(seat = seat, state = SeatMaxTimeState.UNKNOWN)
+            else -> SeatMaxTimeRow(seat = seat, state = SeatMaxTimeState.OPEN_ENDED)
         }
     }
-
-    val startAbs = startMin // считаем от “дня 0”
-    val limit = startAbs + horizonMin
-
-    val nextStart = all
-        .asSequence()
-        .filter { (s, _) -> s >= startAbs }
-        .map { it.first }
-        .minOrNull()
-
-    if (nextStart == null || nextStart > limit) return horizonMin
-    return (nextStart - startAbs).coerceAtLeast(0)
 }
+
+private fun lineStartDateTime(line: CartBookingLine): LocalDateTime =
+    line.date.plusDays(line.startDayOffset.toLong()).atStartOfDay().plusMinutes(line.startMin.toLong())
+
+private fun lineEndDateTime(line: CartBookingLine): LocalDateTime =
+    line.date.plusDays(line.endDayOffset.toLong()).atStartOfDay().plusMinutes(line.endMin.toLong())
 
 private fun formatDurationWithDays(min: Int): String {
     val m = min.coerceAtLeast(0)
@@ -864,11 +1047,8 @@ private fun formatDurationWithDays(min: Int): String {
     }
 }
 
-private fun formatUntilTime(startMinOfDay: Int, addMin: Int): String {
-    val abs = startMinOfDay + addMin
-    val dayOffset = abs / DAY_MIN
-    val m = abs % DAY_MIN
-    val hh = (m / 60).toString().padStart(2, '0')
-    val mm = (m % 60).toString().padStart(2, '0')
-    return if (dayOffset > 0) "$hh:$mm (+${dayOffset}д)" else "$hh:$mm"
+private fun formatUntilDateTime(startAt: LocalDateTime, endAt: LocalDateTime): String {
+    val time = endAt.format(SEATS_TIME_FMT)
+    val dayOffset = ChronoUnit.DAYS.between(startAt.toLocalDate(), endAt.toLocalDate()).toInt().coerceAtLeast(0)
+    return if (dayOffset > 0) "$time (+${dayOffset}д)" else time
 }

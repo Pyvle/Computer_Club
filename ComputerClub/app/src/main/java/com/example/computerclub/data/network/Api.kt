@@ -90,6 +90,9 @@ interface CheckoutApi {
     @GET("/api/v1/purchases")
     suspend fun getMyPurchases(): List<PurchaseListItemDto>
 
+    @GET("/api/v1/me/bookings")
+    suspend fun getMyBookings(): List<MyBookingHistoryItemDto>
+
     @GET("/api/v1/purchases/{id}")
     suspend fun getPurchaseDetails(@Path("id") id: Long): PurchaseDetailsDto
 
@@ -112,6 +115,12 @@ interface SeatApi {
         @Path("clubId") clubId: Long,
         @Body dto: SeatAvailabilityRequestDto
     ): List<SeatAvailabilityResponseDto>
+
+    @POST("/api/v1/clubs/{clubId}/seats/max-availability")
+    suspend fun getMaxAvailability(
+        @Path("clubId") clubId: Long,
+        @Body dto: SeatMaxAvailabilityRequestDto
+    ): List<SeatMaxAvailabilityResponseDto>
 }
 
 interface FavoritesApi {

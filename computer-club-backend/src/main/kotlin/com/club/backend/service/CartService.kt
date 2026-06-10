@@ -6,6 +6,7 @@ import com.club.backend.repository.*
 import jakarta.persistence.EntityNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Duration
 import java.time.LocalDateTime
 
 @Service
@@ -17,10 +18,11 @@ class CartService(
     private val clubProductRepository: ClubProductRepository,
     private val clubAccessService: ClubAccessService,
     private val cartRepository: CartRepository,
-    private val cartBookingLineRepository: CartBookingLineRepository,
-    private val cartBookingSeatRepository: CartBookingSeatRepository,
-    private val cartProductLineRepository: CartProductLineRepository,
-    private val bookingRepository: BookingRepository
+    private val cartItemRepository: CartItemRepository,
+    private val cartItemSeatRepository: CartItemSeatRepository,
+    private val bookingRepository: BookingRepository,
+    private val seatTypeSettingRepository: ClubSeatTypeSettingRepository,
+    private val timePackageRepository: ClubTimePackageRepository
 ) {
 
     @Transactional
@@ -53,9 +55,10 @@ class CartService(
         require(req.endAt.isAfter(req.startAt)) { "endAt must be after startAt" }
         val cart = getOrCreateCart(userId, clubId)
 
-        cartBookingLineRepository.save(
-            CartBookingLineEntity(
+        cartItemRepository.save(
+            CartItemEntity(
                 cart = cart,
+                itemType = CartItemType.BOOKING,
                 startAt = req.startAt,
                 endAt = req.endAt,
                 packageHours = req.packageHours
@@ -71,11 +74,12 @@ class CartService(
         clubAccessService.ensureNotBlocked(userId, clubId)
 
         val cart = getOrCreateCart(userId, clubId)
-        val line = cartBookingLineRepository.findById(lineId)
+        val line = cartItemRepository.findById(lineId)
             .orElseThrow { EntityNotFoundException("Cart booking line not found") }
         require(line.cart.id == cart.id) { "Line does not belong to this cart" }
+        require(line.itemType == CartItemType.BOOKING) { "Line is not a booking item" }
 
-        cartBookingSeatRepository.deleteAllByLine_Id(lineId)
+        cartItemSeatRepository.deleteAllByItem_Id(lineId)
 
         if (req.seatIds.isNotEmpty()) {
             val uniqueSeatIds = req.seatIds.distinct()
@@ -88,7 +92,7 @@ class CartService(
             }
 
             // 1) проверяем конфликты с реальными бронями
-            val busyIds = bookingRepository.findBusySeatIds(clubId, line.startAt, line.endAt)
+            val busyIds = bookingRepository.findBusySeatIds(clubId, line.startAt!!, line.endAt!!)
                 .map { it.getSeatId() }
                 .toSet()
             val conflictWithExistingBooking = uniqueSeatIds.firstOrNull { it in busyIds }
@@ -97,12 +101,12 @@ class CartService(
             }
 
             // 2) предотвращаем конфликты внутри корзины
-            val otherLines = cartBookingLineRepository.findAllByCartIdOrderByIdAsc(cart.id!!)
+            val otherLines = cartItemRepository.findAllByCartIdAndTypeOrderByIdAsc(cart.id!!, CartItemType.BOOKING)
                 .filter { it.id != lineId }
             for (other in otherLines) {
-                val overlaps = other.startAt.isBefore(line.endAt) && line.startAt.isBefore(other.endAt)
+                val overlaps = other.startAt!!.isBefore(line.endAt!!) && line.startAt!!.isBefore(other.endAt!!)
                 if (!overlaps) continue
-                val otherSeatIds = cartBookingSeatRepository.findAllByLine_Id(other.id!!)
+                val otherSeatIds = cartItemSeatRepository.findAllByItem_Id(other.id!!)
                     .map { it.seat.id!! }
                     .toHashSet()
                 val conflictInCart = uniqueSeatIds.firstOrNull { it in otherSeatIds }
@@ -113,13 +117,13 @@ class CartService(
 
             // 3) сохраняем выбор мест
             seats.forEach { seat ->
-                cartBookingSeatRepository.save(
-                    CartBookingSeatEntity(
-                        id = CartBookingSeatId(
-                            cartBookingLineId = line.id!!,
+                cartItemSeatRepository.save(
+                    CartItemSeatEntity(
+                        id = CartItemSeatId(
+                            cartItemId = line.id!!,
                             seatId = seat.id!!
                         ),
-                        line = line,
+                        item = line,
                         seat = seat
                     )
                 )
@@ -144,24 +148,25 @@ class CartService(
 
         require(cp.isAvailable) { "Product is not available now" }
 
-        val existingLines = cartProductLineRepository
-            .findAllByCartIdAndProductIdOrderByIdAsc(cart.id!!, req.productId)
+        val existingLines = cartItemRepository
+            .findAllProductItemsByCartIdAndProductIdOrderByIdAsc(cart.id!!, req.productId)
 
         val existing = existingLines.firstOrNull()
         if (existing != null) {
-            existing.qty += req.qty
+            existing.qty = existing.qty!! + req.qty
             existing.priceRubSnapshot = cp.priceRub
             existing.titleSnapshot = product.title
-            cartProductLineRepository.save(existing)
+            cartItemRepository.save(existing)
 
             // дубликаты не должны появиться при UNIQUE-индексе — страхуемся слиянием
             if (existingLines.size > 1) {
-                cartProductLineRepository.deleteAll(existingLines.drop(1))
+                cartItemRepository.deleteAll(existingLines.drop(1))
             }
         } else {
-            cartProductLineRepository.save(
-                CartProductLineEntity(
+            cartItemRepository.save(
+                CartItemEntity(
                     cart = cart,
+                    itemType = CartItemType.PRODUCT,
                     product = product,
                     qty = req.qty,
                     priceRubSnapshot = cp.priceRub,
@@ -180,15 +185,16 @@ class CartService(
         clubAccessService.ensureNotBlocked(userId, clubId)
 
         val cart = getOrCreateCart(userId, clubId)
-        val line = cartProductLineRepository.findById(lineId)
+        val line = cartItemRepository.findById(lineId)
             .orElseThrow { EntityNotFoundException("Cart product line not found") }
         require(line.cart.id == cart.id) { "Line does not belong to this cart" }
+        require(line.itemType == CartItemType.PRODUCT) { "Line is not a product item" }
 
         if (qty <= 0) {
-            cartProductLineRepository.delete(line)
+            cartItemRepository.delete(line)
         } else {
             line.qty = qty
-            cartProductLineRepository.save(line)
+            cartItemRepository.save(line)
         }
         cart.updatedAt = LocalDateTime.now()
         cartRepository.save(cart)
@@ -203,16 +209,18 @@ class CartService(
 
         when (type.lowercase()) {
             "booking" -> {
-                val line = cartBookingLineRepository.findById(id)
+                val line = cartItemRepository.findById(id)
                     .orElseThrow { EntityNotFoundException("Booking line not found") }
                 require(line.cart.id == cart.id) { "Line does not belong to this cart" }
-                cartBookingLineRepository.delete(line)
+                require(line.itemType == CartItemType.BOOKING) { "Line is not a booking item" }
+                cartItemRepository.delete(line)
             }
             "product" -> {
-                val line = cartProductLineRepository.findById(id)
+                val line = cartItemRepository.findById(id)
                     .orElseThrow { EntityNotFoundException("Product line not found") }
                 require(line.cart.id == cart.id) { "Line does not belong to this cart" }
-                cartProductLineRepository.delete(line)
+                require(line.itemType == CartItemType.PRODUCT) { "Line is not a product item" }
+                cartItemRepository.delete(line)
             }
             else -> error("type must be booking or product")
         }
@@ -229,12 +237,7 @@ class CartService(
         val cart = cartRepository.findByUserIdAndClubId(userId, clubId)
             .orElseThrow { EntityNotFoundException("Cart not found") }
 
-        cartBookingLineRepository.findAllByCartIdOrderByIdAsc(cart.id!!).forEach {
-            cartBookingLineRepository.delete(it)
-        }
-        cartProductLineRepository.findAllByCartIdOrderByIdAsc(cart.id!!).forEach {
-            cartProductLineRepository.delete(it)
-        }
+        cartItemRepository.deleteAllByCartId(cart.id!!)
         cart.updatedAt = LocalDateTime.now()
         cartRepository.save(cart)
     }
@@ -249,25 +252,29 @@ class CartService(
 
     @Transactional(readOnly = true)
     fun toResponse(cart: CartEntity): CartResponse {
-        val bookingLines = cartBookingLineRepository.findAllByCartIdOrderByIdAsc(cart.id!!).map { line ->
-            val seatIds = cartBookingSeatRepository.findAllByLine_Id(line.id!!).map { it.seat.id!! }
+        val pricing = bookingPricing(cart.club.id!!)
+        val bookingLines = cartItemRepository.findAllByCartIdAndTypeOrderByIdAsc(cart.id!!, CartItemType.BOOKING).map { line ->
+            val lineSeats = cartItemSeatRepository.findAllByItem_Id(line.id!!)
+            val seatIds = lineSeats.map { it.seat.id!! }
+            val hours = Duration.between(line.startAt!!, line.endAt!!).toMinutes().toDouble() / 60.0
             CartBookingLineResponse(
                 lineId = line.id!!,
-                startAt = line.startAt.toString(),
-                endAt = line.endAt.toString(),
+                startAt = line.startAt!!.toString(),
+                endAt = line.endAt!!.toString(),
                 packageHours = line.packageHours,
-                seatIds = seatIds
+                seatIds = seatIds,
+                lineTotalRub = lineSeats.sumOf { pricing.seatTotalRub(hours, it.seat.type, line.packageHours) }
             )
         }
 
-        val productLines = cartProductLineRepository.findAllByCartIdOrderByIdAsc(cart.id!!).map { line ->
+        val productLines = cartItemRepository.findAllByCartIdAndTypeOrderByIdAsc(cart.id!!, CartItemType.PRODUCT).map { line ->
             CartProductLineResponse(
                 lineId = line.id!!,
-                productId = line.product.id!!,
-                title = line.titleSnapshot,
-                qty = line.qty,
-                priceRub = line.priceRubSnapshot,
-                lineTotalRub = line.qty * line.priceRubSnapshot
+                productId = line.product!!.id!!,
+                title = line.titleSnapshot!!,
+                qty = line.qty!!,
+                priceRub = line.priceRubSnapshot!!,
+                lineTotalRub = line.qty!! * line.priceRubSnapshot!!
             )
         }
 
@@ -279,5 +286,15 @@ class CartService(
             bookings = bookingLines,
             products = productLines
         )
+    }
+
+    private fun bookingPricing(clubId: Long): BookingPricing {
+        val seatPriceMap = seatTypeSettingRepository.findAllByClub_Id(clubId)
+            .mapNotNull { setting -> setting.pricePerHourRub?.let { setting.seatType to it } }
+            .toMap()
+        val packageRateMap = timePackageRepository
+            .findAllByClub_IdAndIsActiveTrueOrderBySortOrderAscIdAsc(clubId)
+            .associate { it.hours to it.pricePerHourRub }
+        return BookingPricing(seatPriceMap, packageRateMap)
     }
 }

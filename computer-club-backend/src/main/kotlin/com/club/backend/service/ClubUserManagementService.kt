@@ -16,7 +16,7 @@ class ClubUserManagementService(
     private val bookingRepository: BookingRepository,
     private val purchaseRepository: PurchaseRepository,
     private val clubUserBlockRepository: ClubUserBlockRepository,
-    private val clubUserReportRepository: ClubUserReportRepository
+    private val clubMessageRepository: ClubMessageRepository
 ) {
 
     @Transactional(readOnly = true)
@@ -93,7 +93,7 @@ class ClubUserManagementService(
         val bookings  = bookingRepository.findAllByClubIdAndUserIdFetch(clubId, userId)
         val purchases = purchaseRepository.findAllByClubIdAndUserIdFetch(clubId, userId)
         val block     = clubUserBlockRepository.findByClubIdAndUserIdFetch(clubId, userId)
-        val reports   = clubUserReportRepository.findAllByClubIdAndUserIdFetch(clubId, userId)
+        val reports   = clubMessageRepository.findAllReportsByClubIdAndUserIdFetch(clubId, userId)
 
         val now = LocalDateTime.now()
         val blockUntil = block?.blockedUntil
@@ -144,9 +144,9 @@ class ClubUserManagementService(
 
         val reportItems = reports.map { r ->
             ClubUserReportForDetail(
-                reportId  = r.id,
+                reportId  = r.id!!,
                 message   = r.message,
-                status    = r.status.name,
+                status    = r.status!!.name,
                 createdAt = r.createdAt
             )
         }

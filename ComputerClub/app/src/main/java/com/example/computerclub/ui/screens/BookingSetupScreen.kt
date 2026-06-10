@@ -219,7 +219,7 @@ fun BookingSetupScreen(
                         Icon(
                             imageVector = if (isFav) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                             contentDescription = "Избранное",
-                            tint = if (isFav) com.example.computerclub.ui.theme.BrandIndigo
+                            tint = if (isFav) com.example.computerclub.ui.theme.FavoriteAccentDeep
                                    else com.example.computerclub.ui.theme.TextMuted
                         )
                     }

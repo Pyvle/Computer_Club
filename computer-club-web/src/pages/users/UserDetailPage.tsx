@@ -24,6 +24,7 @@ import SectionCard from '../../components/ui/SectionCard'
 import StatusBadge from '../../components/ui/StatusBadge'
 import StatCard from '../../components/ui/StatCard'
 import { tokens } from '../../theme/tokens'
+import { aggregateUserClubStats } from '../../utils/adminUsers'
 import { BOOKING_STATUS, PAYMENT_STATUS } from '../../utils/statusMaps'
 import type {
   AdminPurchaseDetailResponse,
@@ -208,35 +209,10 @@ export default function UserDetailPage() {
 
   // --- Статистика по клубам ---
 
-  const clubStats = useMemo(() => {
-    if (!allBookings) return null
-    const map = new Map<number, {
-      clubName: string
-      bookingsCount: number
-      lastVisit: string
-      paidRub: number
-    }>()
-
-    allBookings.forEach((b) => {
-      const entry = map.get(b.clubId) ?? { clubName: b.clubName, bookingsCount: 0, lastVisit: '', paidRub: 0 }
-      entry.bookingsCount++
-      if (!entry.lastVisit || b.startAt > entry.lastVisit) entry.lastVisit = b.startAt
-      map.set(b.clubId, entry)
-    })
-
-    if (allPurchases) {
-      allPurchases
-        .filter((p) => p.paymentStatus === 'PAID')
-        .forEach((p) => {
-          const entry = map.get(p.clubId)
-          if (entry) entry.paidRub += p.totalRub
-        })
-    }
-
-    return Array.from(map.entries())
-      .map(([clubId, v]) => ({ clubId, ...v }))
-      .sort((a, b) => b.lastVisit.localeCompare(a.lastVisit))
-  }, [allBookings, allPurchases])
+  const clubStats = useMemo(
+    () => aggregateUserClubStats(allBookings, allPurchases),
+    [allBookings, allPurchases],
+  )
 
   // --- Колонки таблиц ---
 

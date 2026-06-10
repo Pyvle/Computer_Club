@@ -4,6 +4,7 @@ import com.club.backend.api.dto.CheckoutRequest
 import com.club.backend.api.dto.CheckoutResponse
 import com.club.backend.api.dto.PurchaseDetailsResponse
 import com.club.backend.api.dto.PurchaseListItemResponse
+import com.club.backend.api.dto.UserBookingHistoryItemResponse
 import com.club.backend.service.CheckoutService
 import jakarta.validation.Valid
 import org.springframework.dao.DataIntegrityViolationException
@@ -42,6 +43,10 @@ class CheckoutController(
     @GetMapping("/purchases/{id}")
     fun purchaseDetails(@PathVariable("id") id: Long): PurchaseDetailsResponse =
         checkoutService.purchaseDetails(currentUserId(), id)
+
+    @GetMapping("/me/bookings")
+    fun myBookings(): List<UserBookingHistoryItemResponse> =
+        checkoutService.userBookings(currentUserId())
 
     @PostMapping("/purchases/{id}/pay")
     fun pay(@PathVariable("id") id: Long): PurchaseListItemResponse =

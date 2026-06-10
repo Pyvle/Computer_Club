@@ -80,6 +80,14 @@ fun HistoryScreen(appVm: AppViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        appVm.historyError?.let { message ->
+            Text(
+                text = message,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+
         TabRow(
             selectedTabIndex = tab,
             containerColor = AppSurface,
@@ -132,9 +140,10 @@ private fun PurchaseCard(
     appVm: AppViewModel,
     onMessage: (String) -> Unit
 ) {
+    val purchaseIdLong = purchase.id.toLongOrNull()
     var showCancelDialog by remember { mutableStateOf(false) }
 
-    if (showCancelDialog) {
+    if (showCancelDialog && purchaseIdLong != null) {
         AlertDialog(
             onDismissRequest = { showCancelDialog = false },
             title = { Text("Отменить заказ?") },
@@ -143,7 +152,7 @@ private fun PurchaseCard(
                 TextButton(onClick = {
                     showCancelDialog = false
                     appVm.cancelPurchase(
-                        purchase.id.toLong(),
+                        purchaseIdLong,
                         onSuccess = { onMessage("Заказ отменён") },
                         onError = { onMessage("Не удалось отменить заказ") }
                     )
@@ -264,12 +273,12 @@ private fun PurchaseCard(
                 )
             }
 
-            if (purchase.paymentStatus == "CREATED") {
+            if (purchase.paymentStatus == "CREATED" && purchaseIdLong != null) {
                 AppPrimaryButton(
                     text = "Оплатить",
                     onClick = {
                         appVm.payPurchase(
-                            purchase.id.toLong(),
+                            purchaseIdLong,
                             onSuccess = { onMessage("Заказ оплачен") },
                             onError = { onMessage("Не удалось оплатить заказ") }
                         )
@@ -278,7 +287,8 @@ private fun PurchaseCard(
                 )
             }
 
-            val canCancel = purchase.paymentStatus != "CANCELED" &&
+            val canCancel = purchaseIdLong != null &&
+                purchase.paymentStatus != "CANCELED" &&
                 purchase.bookingOrders.any { resolveBookingStatus(now, it) == BookingStatus.UPCOMING }
 
             if (canCancel) {

@@ -35,7 +35,8 @@ fun ProductOrderStatus.toLabel(): String = when (this) {
 fun String.toPaymentChipTone(): ChipTone = when (this.uppercase()) {
     "PAID" -> ChipTone.SUCCESS
     "CREATED" -> ChipTone.WARNING
-    "FAILED", "REFUND" -> ChipTone.ERROR
+    "REFUND" -> ChipTone.WARNING
+    "FAILED" -> ChipTone.ERROR
     "CANCELED" -> ChipTone.NEUTRAL
     else -> ChipTone.NEUTRAL
 }

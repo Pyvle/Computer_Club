@@ -6,6 +6,7 @@ import apiClient from '../../../utils/apiClient'
 import { useClient } from '../../../contexts/ClientContext'
 import { useAuth } from '../../../contexts/AuthContext'
 import { tokens } from '../../../theme/tokens'
+import { resolveMediaUrl } from '../../../utils/media'
 import type { ClubProductClientResponse } from '../../../types'
 
 const { Text } = Typography
@@ -89,48 +90,52 @@ export default function ShopPage() {
             label: cat,
             children: (
               <Row gutter={[16, 16]}>
-                {(grouped.get(cat) ?? []).map((product) => (
-                  <Col key={product.productId} xs={24} sm={12} lg={8}>
-                    <Card
-                      cover={
-                        product.imageUrl ? (
-                          <img
-                            src={product.imageUrl}
-                            alt={product.title}
-                            style={{ height: 160, objectFit: 'cover' }}
-                          />
-                        ) : (
-                          <div style={{ height: 160, background: tokens.colors.surfaceAlt, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Text type="secondary">Нет фото</Text>
-                          </div>
-                        )
-                      }
-                      actions={[
-                        <Button
-                          key="add"
-                          type="primary"
-                          icon={<ShoppingCartOutlined />}
-                          loading={addingId === product.productId}
-                          onClick={() => handleAddToCart(product.productId)}
-                        >
-                          В корзину
-                        </Button>,
-                      ]}
-                    >
-                      <Card.Meta
-                        title={
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span>{product.title}</span>
-                            <Text strong style={{ color: tokens.colors.primary, flexShrink: 0, marginLeft: 8 }}>
-                              {product.priceRub} ₽
-                            </Text>
-                          </div>
+                {(grouped.get(cat) ?? []).map((product) => {
+                  const imageUrl = resolveMediaUrl(product.imageUrl)
+
+                  return (
+                    <Col key={product.productId} xs={24} sm={12} lg={8}>
+                      <Card
+                        cover={
+                          imageUrl ? (
+                            <img
+                              src={imageUrl}
+                              alt={product.title}
+                              style={{ height: 160, objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <div style={{ height: 160, background: tokens.colors.surfaceAlt, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Text type="secondary">Нет фото</Text>
+                            </div>
+                          )
                         }
-                        description={product.description}
-                      />
-                    </Card>
-                  </Col>
-                ))}
+                        actions={[
+                          <Button
+                            key="add"
+                            type="primary"
+                            icon={<ShoppingCartOutlined />}
+                            loading={addingId === product.productId}
+                            onClick={() => handleAddToCart(product.productId)}
+                          >
+                            В корзину
+                          </Button>,
+                        ]}
+                      >
+                        <Card.Meta
+                          title={
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span>{product.title}</span>
+                              <Text strong style={{ color: tokens.colors.primary, flexShrink: 0, marginLeft: 8 }}>
+                                {product.priceRub} ₽
+                              </Text>
+                            </div>
+                          }
+                          description={product.description}
+                        />
+                      </Card>
+                    </Col>
+                  )
+                })}
               </Row>
             ),
           }))}

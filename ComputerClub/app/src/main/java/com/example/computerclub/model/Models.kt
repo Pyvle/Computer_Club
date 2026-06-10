@@ -42,6 +42,12 @@ data class Seat(
     val booked: List<TimeRange> = emptyList(),
 )
 
+data class SeatMaxAvailability(
+    val isAvailableAtStart: Boolean,
+    val maxAvailableMinutes: Int?,
+    val nextBookingStartsAt: LocalDateTime? = null,
+)
+
 enum class SeatAvailability { FREE, BOOKED, PARTIAL }
 
 data class ProductCategory(val id: String, val title: String)
@@ -52,6 +58,7 @@ data class Product(
     val title: String,
     val price: Int,
     val description: String,
+    val imageUrl: String? = null,
     val variants: List<String> = emptyList()
 )
 
@@ -81,7 +88,8 @@ data class CartBookingLine(
     val endDayOffset: Int,
     val endMin: Int,
     val packageHours: Int?,
-    val seatIds: List<String>
+    val seatIds: List<String>,
+    val lineTotalRub: Int? = null
 )
 
 data class BookingDraft(

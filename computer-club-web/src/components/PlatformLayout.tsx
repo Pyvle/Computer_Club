@@ -9,6 +9,7 @@ import {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { tokens } from '../theme/tokens'
+import { getPlatformSelectedKey } from '../utils/adminNavigation'
 
 const { Sider, Header, Content } = Layout
 
@@ -31,53 +32,64 @@ export default function PlatformLayout() {
     navigate('/')
   }
 
-  const activeItem = PLATFORM_NAV.find((item) => location.pathname.startsWith(item.key))
-  const selectedKey = activeItem?.key ?? ''
+  const selectedKey = getPlatformSelectedKey(location.pathname, PLATFORM_NAV.map((item) => item.key))
 
   return (
     <Layout style={{ minHeight: '100vh', background: tokens.colors.background }}>
       <Sider
         width={224}
         className="admin-sider"
-        style={{ background: tokens.colors.surface }}
+        style={{
+          background: tokens.colors.surface,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100vh',
+          height: '100vh',
+          position: 'sticky',
+          top: 0,
+          alignSelf: 'flex-start',
+        }}
       >
-        {/* Логотип */}
-        <div
-          style={{
-            padding: '18px 20px 14px',
-            borderBottom: `1px solid ${tokens.colors.border}`,
-          }}
-        >
-          <Typography.Text strong style={{ color: tokens.colors.primary, fontSize: 15 }}>
-            Компьютерный клуб
-          </Typography.Text>
-        </div>
-
-        {/* Навигация */}
-        <Menu
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={PLATFORM_NAV}
-          onClick={({ key }) => navigate(key)}
-          style={{
-            flex: 1,
-            border: 'none',
-            marginTop: 8,
-            background: 'transparent',
-          }}
-        />
-
-        {/* Выход внизу */}
-        <div style={{ padding: '12px 12px 20px', borderTop: `1px solid ${tokens.colors.border}` }}>
-          <Button
-            icon={<LogoutOutlined />}
-            onClick={handleLogout}
-            type="text"
-            block
-            style={{ textAlign: 'left', color: tokens.colors.textSecondary, justifyContent: 'flex-start' }}
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {/* Логотип */}
+          <div
+            style={{
+              padding: '18px 20px 14px',
+              borderBottom: `1px solid ${tokens.colors.border}`,
+            }}
           >
-            Выйти
-          </Button>
+            <Typography.Text strong style={{ color: tokens.colors.primary, fontSize: 15 }}>
+              Компьютерный клуб
+            </Typography.Text>
+          </div>
+
+          {/* Навигация */}
+          <Menu
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            items={PLATFORM_NAV}
+            onClick={({ key }) => navigate(key)}
+            style={{
+              flex: 1,
+              border: 'none',
+              marginTop: 8,
+              background: 'transparent',
+              overflowY: 'auto',
+            }}
+          />
+
+          {/* Выход внизу */}
+          <div style={{ padding: '12px 12px 20px', borderTop: `1px solid ${tokens.colors.border}`, marginTop: 'auto' }}>
+            <Button
+              icon={<LogoutOutlined />}
+              onClick={handleLogout}
+              type="text"
+              block
+              style={{ textAlign: 'left', color: tokens.colors.textSecondary, justifyContent: 'flex-start' }}
+            >
+              Выйти
+            </Button>
+          </div>
         </div>
       </Sider>
 

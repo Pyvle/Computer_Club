@@ -12,13 +12,14 @@ import com.club.backend.api.dto.admin.GlobalClubPermissionOverrideResponse
 import com.club.backend.api.dto.admin.GlobalClubResponse
 import com.club.backend.api.dto.admin.GlobalClubStaffDetailsResponse
 import com.club.backend.api.dto.admin.GlobalClubStatsResponse
-import com.club.backend.domain.entity.ClubWarningEntity
+import com.club.backend.domain.entity.ClubMessageEntity
+import com.club.backend.domain.entity.ClubMessageType
 import com.club.backend.domain.enum.ClubReportStatus
 import com.club.backend.domain.enum.FloorplanStatus
+import com.club.backend.repository.ClubMessageRepository
 import com.club.backend.repository.ClubRepository
 import com.club.backend.repository.ClubStaffRepository
-import com.club.backend.repository.ClubUserReportRepository
-import com.club.backend.repository.ClubWarningRepository
+import com.club.backend.repository.UserRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -27,8 +28,8 @@ import java.time.LocalDateTime
 @Service
 class GlobalClubAdminService(
     private val clubRepo: ClubRepository,
-    private val warningRepo: ClubWarningRepository,
-    private val clubUserReportRepository: ClubUserReportRepository,
+    private val clubMessageRepository: ClubMessageRepository,
+    private val userRepository: UserRepository,
     private val clubStaffRepository: ClubStaffRepository,
     private val clubFloorplanRepository: com.club.backend.repository.ClubFloorplanRepository,
     private val seatAdminService: SeatAdminService,
@@ -46,7 +47,7 @@ class GlobalClubAdminService(
 
     fun listAll(): List<GlobalClubResponse> =
         clubRepo.findAllByOrderByIdDesc().let { clubs ->
-            val reportCounts = clubUserReportRepository.countByClubGrouped().associate { row ->
+            val reportCounts = clubMessageRepository.countReportsByClubGrouped().associate { row ->
                 (row[0] as Long) to (row[1] as Long).toInt()
             }
             clubs.map { it.toResponse(reportCounts[it.id] ?: 0) }
@@ -166,14 +167,21 @@ class GlobalClubAdminService(
     @Transactional
     fun addWarning(clubId: Long, adminId: Long, req: ClubWarningRequest): ClubWarningResponse {
         val club = clubRepo.findById(clubId).orElseThrow { NoSuchElementException("Club $clubId not found") }
-        val warning = warningRepo.save(
-            ClubWarningEntity(club = club, message = req.message, createdBy = adminId)
+        val admin = userRepository.findById(adminId).orElseThrow { NoSuchElementException("User $adminId not found") }
+        val warning = clubMessageRepository.save(
+            ClubMessageEntity(
+                club = club,
+                author = admin,
+                messageType = ClubMessageType.PLATFORM_WARNING,
+                message = req.message
+            )
         )
         return warning.toResponse()
     }
 
     fun getWarnings(clubId: Long): List<ClubWarningResponse> =
-        warningRepo.findAllByClubIdOrderByCreatedAtDesc(clubId).map { it.toResponse() }
+        clubMessageRepository.findAllByClub_IdAndMessageTypeOrderByCreatedAtDesc(clubId, ClubMessageType.PLATFORM_WARNING)
+            .map { it.toResponse() }
 
     private fun buildStats(
         staff: List<GlobalClubStaffDetailsResponse>,
@@ -228,10 +236,10 @@ class GlobalClubAdminService(
         createdAt = createdAt.toString()
     )
 
-    private fun ClubWarningEntity.toResponse() = ClubWarningResponse(
-        id = id,
+    private fun ClubMessageEntity.toResponse() = ClubWarningResponse(
+        id = id!!,
         message = message,
-        createdBy = createdBy,
+        createdBy = author!!.id!!,
         createdAt = createdAt
     )
 

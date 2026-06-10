@@ -1,7 +1,6 @@
 package com.club.backend.service
 
-import com.club.backend.repository.CartBookingLineRepository
-import com.club.backend.repository.CartProductLineRepository
+import com.club.backend.repository.CartItemRepository
 import com.club.backend.repository.CartRepository
 import jakarta.persistence.EntityNotFoundException
 import org.slf4j.LoggerFactory
@@ -12,8 +11,7 @@ import java.time.LocalDateTime
 @Service
 class CartCleanupService(
     private val cartRepository: CartRepository,
-    private val cartBookingLineRepository: CartBookingLineRepository,
-    private val cartProductLineRepository: CartProductLineRepository
+    private val cartItemRepository: CartItemRepository
 ) {
 
     @Transactional
@@ -21,13 +19,12 @@ class CartCleanupService(
         val cart = cartRepository.findByUserIdAndClubId(userId, clubId)
             .orElseThrow { EntityNotFoundException("Cart not found") }
 
-        val deletedBookings = cartBookingLineRepository.deleteAllByCartId(cart.id!!)
-        val deletedProducts = cartProductLineRepository.deleteAllByCartId(cart.id!!)
+        val deletedItems = cartItemRepository.deleteAllByCartId(cart.id!!)
 
         cart.updatedAt = LocalDateTime.now()
         cartRepository.saveAndFlush(cart)
 
-        logger.info("Cart cleared: cartId=${cart.id}, bookingsDeleted=$deletedBookings, productsDeleted=$deletedProducts")
+        logger.info("Cart cleared: cartId=${cart.id}, itemsDeleted=$deletedItems")
     }
 
     companion object {

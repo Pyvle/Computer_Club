@@ -41,7 +41,8 @@ data class CartBookingLineResponse(
     val startAt: String,
     val endAt: String,
     val packageHours: Int?,
-    val seatIds: List<Long>
+    val seatIds: List<Long>,
+    val lineTotalRub: Int
 )
 
 data class CartProductLineResponse(

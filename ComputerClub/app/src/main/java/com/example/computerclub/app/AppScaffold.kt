@@ -19,7 +19,6 @@ fun AppScaffold(
 ) {
     val showBottomBar = route.startsWith(Routes.Clubs) ||
         route.startsWith(Routes.Booking) ||
-        route.startsWith(Routes.BookingSeats) ||
         route.startsWith(Routes.Shop) ||
         route.startsWith(Routes.Cart) ||
         route.startsWith(Routes.History) ||

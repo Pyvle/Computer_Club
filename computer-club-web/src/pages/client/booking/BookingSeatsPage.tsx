@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import apiClient from '../../../utils/apiClient'
+import { calculateSeatSelectionTotal, getEffectiveSeatPricePerHour } from '../../../utils/clientBooking'
 import { useClient } from '../../../contexts/ClientContext'
 import ClientFloorplanViewer from '../../../components/ClientFloorplanViewer'
 import SectionCard from '../../../components/ui/SectionCard'
@@ -19,6 +20,7 @@ import type {
   FloorplanWithAvailabilityClientResponse,
   SeatClientResponse,
   SeatPriceClientResponse,
+  TimePackageClientResponse,
 } from '../../../types'
 
 const BOOKING_STEPS = ['Время', 'Места', 'Корзина']
@@ -29,7 +31,9 @@ function SeatsPanel({
   selectedSeatIds,
   seatById,
   seatPrices,
+  timePackages,
   durationHours,
+  packageHours,
   submitting,
   onAddToCart,
   onBack,
@@ -37,21 +41,29 @@ function SeatsPanel({
   selectedSeatIds: number[]
   seatById: Map<number, SeatClientResponse>
   seatPrices: SeatPriceClientResponse[]
+  timePackages: TimePackageClientResponse[]
   durationHours: number
+  packageHours: number | null
   submitting: boolean
   onAddToCart: () => void
   onBack: () => void
 }) {
   function getPricePerHour(seatId: number): number {
-    const seat = seatById.get(seatId)
-    return seatPrices.find((p) => p.seatType === seat?.type)?.pricePerHourRub ?? 0
+    return getEffectiveSeatPricePerHour(seatId, seatById, seatPrices, timePackages, packageHours)
   }
 
   function calcSeatPrice(seatId: number) {
     return Math.round(getPricePerHour(seatId) * durationHours)
   }
 
-  const totalPrice = selectedSeatIds.reduce((sum, id) => sum + calcSeatPrice(id), 0)
+  const totalPrice = calculateSeatSelectionTotal(
+    selectedSeatIds,
+    seatById,
+    seatPrices,
+    durationHours,
+    timePackages,
+    packageHours,
+  )
 
   return (
     <div style={{
@@ -206,6 +218,7 @@ export default function BookingSeatsPage() {
   const [availability, setAvailability] = useState<FloorplanWithAvailabilityClientResponse | null>(null)
   const [seats, setSeats] = useState<SeatClientResponse[]>([])
   const [seatPrices, setSeatPrices] = useState<SeatPriceClientResponse[]>([])
+  const [timePackages, setTimePackages] = useState<TimePackageClientResponse[]>([])
   const [selectedSeatIds, setSelectedSeatIds] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -226,16 +239,18 @@ export default function BookingSeatsPage() {
     async function load() {
       setLoading(true)
       try {
-        const [availRes, seatsRes, pricesRes] = await Promise.all([
+        const [availRes, seatsRes, pricesRes, packagesRes] = await Promise.all([
           apiClient.get<FloorplanWithAvailabilityClientResponse>(
             `/clubs/${clubId}/floorplan-with-availability?from=${fromISO}&to=${toISO}`
           ),
           apiClient.get<SeatClientResponse[]>(`/clubs/${clubId}/seats`),
           apiClient.get<SeatPriceClientResponse[]>(`/clubs/${clubId}/seat-prices`),
+          apiClient.get<TimePackageClientResponse[]>(`/clubs/${clubId}/time-packages`).catch(() => ({ data: [] as TimePackageClientResponse[] })),
         ])
         setAvailability(availRes.data)
         setSeats(seatsRes.data)
         setSeatPrices(pricesRes.data)
+        setTimePackages(packagesRes.data)
       } catch {
         message.error('Не удалось загрузить схему зала')
       } finally {
@@ -382,7 +397,9 @@ export default function BookingSeatsPage() {
             selectedSeatIds={selectedSeatIds}
             seatById={seatById}
             seatPrices={seatPrices}
+            timePackages={timePackages}
             durationHours={durationHours}
+            packageHours={packageHours ?? null}
             submitting={submitting}
             onAddToCart={handleAddToCart}
             onBack={() => navigate(`/clubs/${clubId}/booking`)}
@@ -400,4 +417,3 @@ export default function BookingSeatsPage() {
     </div>
   )
 }
-

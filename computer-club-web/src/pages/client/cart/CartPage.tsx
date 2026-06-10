@@ -8,10 +8,10 @@ import {
   TagOutlined,
   CheckCircleOutlined,
   HeartOutlined,
-  SafetyCertificateOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import apiClient from '../../../utils/apiClient'
+import { calculateCartBookingTotal, calculateCartProductTotal } from '../../../utils/clientBooking'
 import { useClient } from '../../../contexts/ClientContext'
 import PageHeader from '../../../components/ui/PageHeader'
 import SectionCard from '../../../components/ui/SectionCard'
@@ -24,6 +24,7 @@ import type {
   SeatClientResponse,
   SeatPriceClientResponse,
   CheckoutClientResponse,
+  TimePackageClientResponse,
 } from '../../../types'
 
 // --- Карточка одного бронирования ---
@@ -32,11 +33,13 @@ function BookingCard({
   booking,
   seats,
   seatPrices,
+  timePackages,
   onDelete,
 }: {
   booking: CartBookingLineClientResponse
   seats: Map<number, SeatClientResponse>
   seatPrices: SeatPriceClientResponse[]
+  timePackages: TimePackageClientResponse[]
   onDelete: () => void
 }) {
   const start = dayjs(booking.startAt)
@@ -47,11 +50,7 @@ function BookingCard({
     : `${durationHours.toFixed(1)} ч`
 
   // вычисляем стоимость из цен на типы мест
-  const estimatedPrice = booking.seatIds.reduce((sum, seatId) => {
-    const seat = seats.get(seatId)
-    const pricePerHour = seatPrices.find((p) => p.seatType === seat?.type)?.pricePerHourRub ?? 0
-    return sum + Math.round(pricePerHour * durationHours)
-  }, 0)
+  const estimatedPrice = calculateCartBookingTotal(booking, seats, seatPrices, timePackages)
 
   return (
     <div style={{
@@ -257,14 +256,12 @@ function OrderSummary({
   hasBookings,
   checkingOut,
   onCheckout,
-  onAddMore,
 }: {
   bookingTotal: number
   productTotal: number
   hasBookings: boolean
   checkingOut: boolean
   onCheckout: () => void
-  onAddMore: () => void
 }) {
   const grandTotal = bookingTotal + productTotal
   // цена не определена когда есть бронирование, но тарифы не настроены
@@ -354,35 +351,6 @@ function OrderSummary({
         >
           Оформить заказ
         </Button>
-
-        <button
-          onClick={onAddMore}
-          style={{
-            display: 'block', width: '100%',
-            marginTop: 8,
-            padding: '8px 0',
-            background: 'none', border: 'none',
-            color: tokens.colors.textSecondary,
-            fontSize: 13, cursor: 'pointer',
-            textAlign: 'center',
-          }}
-        >
-          + Добавить ещё
-        </button>
-      </div>
-
-      {/* Подпись */}
-      <div style={{
-        padding: '10px 20px 14px',
-        borderTop: `1px solid ${tokens.colors.border}`,
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 8,
-      }}>
-        <SafetyCertificateOutlined style={{ fontSize: 13, color: tokens.colors.textMuted, marginTop: 1, flexShrink: 0 }} />
-        <div style={{ fontSize: 11, color: tokens.colors.textMuted, lineHeight: 1.5 }}>
-          При оформлении доступность мест проверяется повторно. Стоимость рассчитывается по актуальным тарифам.
-        </div>
       </div>
     </div>
   )
@@ -400,19 +368,22 @@ export default function CartPage() {
   const [cart, setCart] = useState<CartClientResponse | null>(null)
   const [seats, setSeats] = useState<Map<number, SeatClientResponse>>(new Map())
   const [seatPrices, setSeatPrices] = useState<SeatPriceClientResponse[]>([])
+  const [timePackages, setTimePackages] = useState<TimePackageClientResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [checkingOut, setCheckingOut] = useState(false)
 
   const loadCart = useCallback(async () => {
     try {
-      const [cartRes, seatsRes, pricesRes] = await Promise.all([
+      const [cartRes, seatsRes, pricesRes, packagesRes] = await Promise.all([
         apiClient.get<CartClientResponse>(`/cart?clubId=${clubId}`),
         apiClient.get<SeatClientResponse[]>(`/clubs/${clubId}/seats`),
         apiClient.get<SeatPriceClientResponse[]>(`/clubs/${clubId}/seat-prices`).catch(() => ({ data: [] as SeatPriceClientResponse[] })),
+        apiClient.get<TimePackageClientResponse[]>(`/clubs/${clubId}/time-packages`).catch(() => ({ data: [] as TimePackageClientResponse[] })),
       ])
       setCart(cartRes.data)
       setSeats(new Map(seatsRes.data.map((s) => [s.id, s])))
       setSeatPrices(pricesRes.data)
+      setTimePackages(packagesRes.data)
     } catch {
       message.error('Не удалось загрузить корзину')
     } finally {
@@ -478,16 +449,11 @@ export default function CartPage() {
 
   // суммарная стоимость для панели
   function calcBookingTotal(b: CartBookingLineClientResponse): number {
-    const durationHours = dayjs(b.endAt).diff(dayjs(b.startAt), 'minute') / 60
-    return b.seatIds.reduce((sum, seatId) => {
-      const seat = seats.get(seatId)
-      const pricePerHour = seatPrices.find((p) => p.seatType === seat?.type)?.pricePerHourRub ?? 0
-      return sum + Math.round(pricePerHour * durationHours)
-    }, 0)
+    return calculateCartBookingTotal(b, seats, seatPrices, timePackages)
   }
 
   const bookingTotal = cart?.bookings.reduce((sum, b) => sum + calcBookingTotal(b), 0) ?? 0
-  const productTotal = cart?.products.reduce((sum, p) => sum + p.lineTotalRub, 0) ?? 0
+  const productTotal = cart ? calculateCartProductTotal(cart.products) : 0
 
   return (
     <div style={{ maxWidth: 920 }}>
@@ -552,6 +518,7 @@ export default function CartPage() {
                     booking={b}
                     seats={seats}
                     seatPrices={seatPrices}
+                    timePackages={timePackages}
                     onDelete={() => deleteItem('booking', b.lineId)}
                   />
                 ))}
@@ -618,7 +585,6 @@ export default function CartPage() {
             hasBookings={(cart?.bookings.length ?? 0) > 0}
             checkingOut={checkingOut}
             onCheckout={handleCheckout}
-            onAddMore={() => navigate(`/clubs/${clubId}/shop`)}
           />
         </div>
       )}

@@ -777,6 +777,7 @@ export interface CartBookingLineClientResponse {
   endAt: string
   packageHours: number | null
   seatIds: number[]
+  lineTotalRub?: number | null
 }
 
 export interface CartProductLineClientResponse {

@@ -77,7 +77,7 @@ class ClubReportsService(
         val bookingsByPurchase = bookingRepository.findByPurchaseIds(ids)
             .groupBy { it.purchase!!.id!! }
         val itemsByPurchase = productOrderItemRepository.findByPurchaseIds(ids)
-            .groupBy { it.productOrder.purchase.id!! }
+            .groupBy { it.purchase.id!! }
         return purchases.map { p ->
             val pid = p.id!!
             AdminPurchaseResponse(
@@ -142,10 +142,10 @@ class ClubReportsService(
             )
         }
 
-        val productOrder = items.firstOrNull()?.productOrder?.let { po ->
+        val productOrder = if (items.isNotEmpty()) {
             AdminPurchaseProductOrderDetail(
-                orderId = po.id!!,
-                totalRub = po.totalRubSnapshot,
+                orderId = items.first().productOrderIdSnapshot ?: purchase.id!!,
+                totalRub = purchase.productsTotalRub,
                 items = items.map { i ->
                     AdminPurchaseOrderItemDetail(
                         title = i.titleSnapshot,
@@ -155,7 +155,7 @@ class ClubReportsService(
                     )
                 }
             )
-        }
+        } else null
 
         return AdminPurchaseDetailResponse(
             id = purchase.id!!,

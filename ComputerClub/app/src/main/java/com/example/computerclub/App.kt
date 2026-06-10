@@ -8,6 +8,7 @@ class App : Application() {
         super.onCreate()
         // setApiKey обязательно вызывается до initialize
         MapKitFactory.setApiKey(BuildConfig.MAPKIT_API_KEY)
+        MapKitFactory.setLocale("ru_RU")
         MapKitFactory.initialize(this)
     }
 }

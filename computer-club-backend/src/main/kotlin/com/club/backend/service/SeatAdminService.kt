@@ -6,7 +6,7 @@ import com.club.backend.api.dto.admin.UpdateSeatRequest
 import com.club.backend.domain.entity.SeatEntity
 import com.club.backend.domain.enum.BookingStatus
 import com.club.backend.repository.BookingSeatRepository
-import com.club.backend.repository.CartBookingSeatRepository
+import com.club.backend.repository.CartItemSeatRepository
 import com.club.backend.repository.ClubRepository
 import com.club.backend.repository.SeatRepository
 import jakarta.persistence.EntityNotFoundException
@@ -18,7 +18,7 @@ class SeatAdminService(
     private val clubRepository: ClubRepository,
     private val seatRepository: SeatRepository,
     private val bookingSeatRepository: BookingSeatRepository,
-    private val cartBookingSeatRepository: CartBookingSeatRepository,
+    private val cartItemSeatRepository: CartItemSeatRepository,
     private val auditService: AuditService
 ) {
 
@@ -91,7 +91,7 @@ class SeatAdminService(
 
         val before = seat.toDto()
         // удаляем ссылки из корзин и исторических бронирований, затем само место
-        cartBookingSeatRepository.deleteAllBySeatId(seatId)
+        cartItemSeatRepository.deleteAllBySeatId(seatId)
         bookingSeatRepository.deleteAllBySeatId(seatId)
         seatRepository.delete(seat)
 

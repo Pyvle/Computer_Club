@@ -14,18 +14,17 @@ interface ProductOrderItemRepository : JpaRepository<ProductOrderItemEntity, Lon
         select i
         from ProductOrderItemEntity i
         left join fetch i.product p
-        where i.productOrder.id = :orderId
+        where i.purchase.id = :purchaseId
         """
     )
-    fun findAllByOrderIdFetchProduct(@Param("orderId") orderId: Long): List<ProductOrderItemEntity>
+    fun findAllByPurchaseIdFetchProduct(@Param("purchaseId") purchaseId: Long): List<ProductOrderItemEntity>
 
     @Query(
         """
         select i
         from ProductOrderItemEntity i
-        join fetch i.productOrder po
-        join fetch po.purchase
-        where po.purchase.id in :purchaseIds
+        join fetch i.purchase p
+        where p.id in :purchaseIds
         """
     )
     fun findByPurchaseIds(@Param("purchaseIds") purchaseIds: Collection<Long>): List<ProductOrderItemEntity>

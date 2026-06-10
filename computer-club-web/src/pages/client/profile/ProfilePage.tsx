@@ -9,7 +9,6 @@ import {
   HeartFilled,
   CalendarOutlined,
   ShoppingOutlined,
-  UserOutlined,
   RightOutlined,
   ExclamationCircleOutlined,
   CheckCircleOutlined,
@@ -227,11 +226,6 @@ export default function ProfilePage() {
     [purchases]
   )
 
-  // цвет аватара из последних цифр телефона
-  const avatarLabel = user.phone ? user.phone.replace(/\D/g, '').slice(-2) : '??'
-  const avatarColors = ['#4F46E5', '#7C3AED', '#059669', '#DC2626', '#D97706', '#2563EB', '#DB2777']
-  const avatarColor = avatarColors[parseInt(avatarLabel, 10) % avatarColors.length] ?? tokens.colors.primary
-
   return (
     <div style={{ maxWidth: 860 }}>
       {/* Hero-блок профиля */}
@@ -246,7 +240,7 @@ export default function ProfilePage() {
         {/* Цветная шапка с мини-статой */}
         <div style={{
           height: 90,
-          background: `linear-gradient(135deg, ${avatarColor}18 0%, ${tokens.colors.primarySoft} 100%)`,
+          background: `linear-gradient(135deg, ${tokens.colors.primarySoft} 0%, ${tokens.colors.surfaceAlt} 100%)`,
           borderBottom: `1px solid ${tokens.colors.border}`,
           padding: '16px 24px',
           display: 'flex',
@@ -267,23 +261,8 @@ export default function ProfilePage() {
         </div>
 
         <div style={{ padding: '0 24px 20px' }}>
-          {/* Аватар */}
-          <div style={{
-            width: 68, height: 68,
-            borderRadius: '50%',
-            background: avatarColor,
-            border: `3px solid ${tokens.colors.surface}`,
-            marginTop: -34, marginBottom: 10,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 22, fontWeight: 700, color: '#fff',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
-            userSelect: 'none',
-          }}>
-            {user.phone ? user.phone.slice(-2) : <UserOutlined />}
-          </div>
-
           {/* Телефон и роль */}
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginTop: 18, marginBottom: 16 }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: tokens.colors.text, marginBottom: 4 }}>
               {user.phone ?? 'Без телефона'}
             </div>
@@ -300,9 +279,6 @@ export default function ProfilePage() {
 
           {/* Действия */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Button icon={<HistoryOutlined />} onClick={() => navigate('/history')}>
-              История заказов
-            </Button>
             <Button icon={<ShoppingOutlined />} onClick={() => navigate('/clubs')}>
               Выбрать клуб
             </Button>

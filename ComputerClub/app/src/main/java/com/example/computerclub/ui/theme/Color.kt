@@ -6,6 +6,8 @@ import androidx.compose.ui.graphics.Color
 val BrandIndigo = Color(0xFF4F46E5)
 val BrandIndigoDeep = Color(0xFF4338CA)
 val BrandIndigoSoft = Color(0xFFEEF2FF)
+val FavoriteAccent = Color(0xFFFACC15)
+val FavoriteAccentDeep = Color(0xFFEAB308)
 
 // --- Фоны и поверхности ---
 val AppBackground = Color(0xFFF6F8FC)

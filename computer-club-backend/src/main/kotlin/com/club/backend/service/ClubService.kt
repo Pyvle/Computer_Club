@@ -3,7 +3,7 @@ package com.club.backend.service
 import com.club.backend.api.dto.AvailableClubResponse
 import com.club.backend.api.dto.ClubResponse
 import com.club.backend.repository.ClubRepository
-import com.club.backend.repository.ClubSeatPriceRepository
+import com.club.backend.repository.ClubSeatTypeSettingRepository
 import com.club.backend.repository.ClubUserBlockRepository
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -15,7 +15,7 @@ import java.time.LocalDateTime
 class ClubService(
     private val clubRepository: ClubRepository,
     private val clubUserBlockRepository: ClubUserBlockRepository,
-    private val clubSeatPriceRepository: ClubSeatPriceRepository
+    private val clubSeatTypeSettingRepository: ClubSeatTypeSettingRepository
 ) {
 
     @Transactional(readOnly = true)
@@ -23,8 +23,9 @@ class ClubService(
         val club = clubRepository.findById(clubId).orElseThrow {
             ResponseStatusException(HttpStatus.NOT_FOUND, "Club not found")
         }
-        val minPrice = clubSeatPriceRepository.findAllByClub_Id(clubId)
-            .minOfOrNull { it.pricePerHourRub }
+        val minPrice = clubSeatTypeSettingRepository.findAllByClub_Id(clubId)
+            .mapNotNull { it.pricePerHourRub }
+            .minOrNull()
         return ClubResponse(
             id = club.id!!,
             name = club.name,
@@ -88,6 +89,6 @@ class ClubService(
 
     // один запрос на все клубы, не N запросов
     private fun minPriceMap(): Map<Long, Int> =
-        clubSeatPriceRepository.findMinPricePerClub()
+        clubSeatTypeSettingRepository.findMinPricePerClub()
             .associate { row -> (row[0] as Long) to (row[1] as Int) }
 }

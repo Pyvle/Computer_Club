@@ -32,7 +32,9 @@ import com.example.computerclub.data.repository.FloorplanRepository
 import com.example.computerclub.data.repository.FavoritesRepository
 import com.example.computerclub.data.repository.ReportRepository
 import com.example.computerclub.data.network.dto.CartResponseDto
+import com.example.computerclub.data.network.dto.MyBookingHistoryItemDto
 import com.example.computerclub.data.network.dto.PurchaseDetailsDto
+import com.example.computerclub.data.network.dto.PurchaseListItemDto
 import retrofit2.HttpException
 import java.util.UUID
 import java.time.temporal.ChronoUnit
@@ -61,6 +63,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         (getApplication<Application>().applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     private val baseUrl = "http://10.0.2.2:8080" // для Android Emulator; поменяй на свой хост
+
+    private fun mediaUrl(url: String?): String? =
+        url?.takeIf { it.isNotBlank() }?.let { if (it.startsWith("/")) "$baseUrl$it" else it }
 
     private val network = NetworkClient(
         context = getApplication(),
@@ -146,6 +151,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadClubs(force = true)
                 loadShopData(force = true)
                 loadTimePackages(force = true)
+                loadSeatPrices(force = true)
                 syncCartProducts(force = true)
                 loadFavorites()
                 onSuccess()
@@ -276,6 +282,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var busySeatIds: Set<String> by mutableStateOf(emptySet())
         private set
 
+    /** Максимально доступное время по каждому месту от выбранного старта. */
+    var seatMaxAvailabilityBySeatId: Map<String, SeatMaxAvailability> by mutableStateOf(emptyMap())
+        private set
+
     /** Позиции мест из опубликованного floorplan (0..1). Если схемы нет — список пустой. */
     var floorplanSeats: List<FloorplanSeatPos> by mutableStateOf(emptyList())
         private set
@@ -326,7 +336,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         clubSeats = emptyList()
         busySeatIds = emptySet()
+        seatMaxAvailabilityBySeatId = emptyMap()
         seatsError = null
+        timePackages = emptyList()
+        seatPrices = emptyList()
+        seatSpecs = emptyList()
         // сбрасываем схему зала — иначе при смене клуба показывается старая схема до загрузки новой
         floorplanSeats = emptyList()
         floorplanWalls = emptyList()
@@ -400,7 +414,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     endDayOffset = endOffsetDays,
                     endMin = end.hour * 60 + end.minute,
                     packageHours = b.packageHours,
-                    seatIds = b.seatIds.map { it.toString() }
+                    seatIds = b.seatIds.map { it.toString() },
+                    lineTotalRub = b.lineTotalRub
                 )
             )
         }
@@ -454,6 +469,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             title = it.title,
                             price = it.priceRub,
                             description = it.description ?: "",
+                            imageUrl = mediaUrl(it.imageUrl),
                             variants = emptyList()
                         )
                     }
@@ -491,6 +507,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val productsJob = launch {
                     clubDetailsProducts = runCatching {
                         catalogRepo.clubProducts(clubId).filter { it.isAvailable }
+                            .map { it.copy(imageUrl = mediaUrl(it.imageUrl)) }
                     }.getOrDefault(emptyList())
                 }
                 specsJob.join()
@@ -630,6 +647,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     } else {
                         throw e
                     }
+                }
+
+                try {
+                    val maxAvailability = seatRepo.maxAvailability(clubIdLong, startAt.toString())
+                    seatMaxAvailabilityBySeatId = maxAvailability.associate { dto ->
+                        dto.seatId.toString() to SeatMaxAvailability(
+                            isAvailableAtStart = dto.isAvailableAtStart,
+                            maxAvailableMinutes = dto.maxAvailableMinutes,
+                            nextBookingStartsAt = dto.nextBookingStartsAt?.let(LocalDateTime::parse)
+                        )
+                    }
+                } catch (_: Exception) {
+                    seatMaxAvailabilityBySeatId = emptyMap()
                 }
             } catch (e: Exception) {
                 seatsError = "Не удалось загрузить места"
@@ -1058,7 +1088,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             endDayOffset = ChronoUnit.DAYS.between(baseDate, e2.toLocalDate()).toInt().coerceAtLeast(0),
                             endMin = e2.hour * 60 + e2.minute,
                             packageHours = newDto.packageHours,
-                            seatIds = newDto.seatIds.map { it.toString() }
+                            seatIds = newDto.seatIds.map { it.toString() },
+                            lineTotalRub = newDto.lineTotalRub
                         )
                     )
                 }
@@ -1208,13 +1239,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun bookingLineCost(line: CartBookingLine): Int {
-        val startAbs = line.startDayOffset * DAY_MIN + line.startMin
-        val endAbs = line.endDayOffset * DAY_MIN + line.endMin
-        val minutes = endAbs - startAbs
-        if (minutes <= 0) return 0
-        val hours = (minutes + 59) / 60 // округление вверх
-        val rate = bookingRateRubPerHour(line.packageHours)
-        return rate * hours * line.seatIds.size
+        line.lineTotalRub?.let { return it }
+
+        val minutes = bookingMinutes(line.startDayOffset, line.startMin, line.endDayOffset, line.endMin)
+        if (minutes <= 0 || line.seatIds.isEmpty()) return 0
+
+        val hours = minutes / 60.0
+        return line.seatIds.sumOf { seatId ->
+            val seat = clubSeats.firstOrNull { it.id == seatId }
+            val rate = if (seat != null) {
+                effectiveRateForSeatType(seat.type, line.packageHours)
+            } else {
+                bookingRateRubPerHour(line.packageHours)
+            }
+            ceil(hours * rate).toInt()
+        }
     }
 
     fun cartBookingsTotal(clubId: String = selectedClubId): Int =
@@ -1302,44 +1341,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (!line.seatIds.contains(seat.id)) return@any false
             intervalsOverlap(startDt, endDt, lineStartDateTime(line), lineEndDateTime(line))
         }
-        if (hasCartConflict) return SeatAvailability.BOOKED
-
-        if (selected == null) return SeatAvailability.FREE
-
-        fun segments(r: TimeRange): List<Pair<Int, Int>> {
-            return if (r.endMin >= r.startMin) listOf(r.startMin to r.endMin)
-            else listOf(r.startMin to DAY_MIN, 0 to r.endMin)
-        }
-
-        fun overlaps(a: List<Pair<Int, Int>>, b: List<Pair<Int, Int>>): Boolean {
-            return a.any { (as0, ae) -> b.any { (bs, be) -> as0 < be && bs < ae } }
-        }
-
-        val selSeg = segments(selected)
-        val bookedSeg = seat.booked.flatMap(::segments)
-
-        // 1) Прямое пересечение с бронью
-        if (overlaps(selSeg, bookedSeg)) {
-            // “частично” — если пересекается, но не полностью покрывает выбранный диапазон (упрощённо)
-            // для wrap-диапазонов оставляем PARTIAL
-            val fullyCovered = seat.booked.any { it.startMin <= selected.startMin && selected.endMin <= it.endMin }
-            return if (fullyCovered) SeatAvailability.BOOKED else SeatAvailability.PARTIAL
-        }
-
-        // 2) Риск продления: считаем, что любая бронь может продлиться до +2 часов
-        // => если выбранный диапазон попадает в расширенный интервал — место блокируем
-        val extendedBookedSeg = seat.booked
-            .flatMap { r ->
-                segments(r).flatMap { (s, e) ->
-                    val e2 = e + MAX_EXTENSION_MIN
-                    if (e2 <= DAY_MIN) listOf(s to e2)
-                    else listOf(s to DAY_MIN, 0 to (e2 - DAY_MIN))
-                }
-            }
-
-        if (overlaps(selSeg, extendedBookedSeg)) return SeatAvailability.BOOKED
-
-        return SeatAvailability.FREE
+        return seatAvailabilityForSelection(seat, selected, hasCartConflict)
     }
 
     /**
@@ -1385,11 +1387,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             historyLoading = true
             historyError = null
             try {
-                val summaries = checkoutRepo.getMyPurchases()
-                val detailed = summaries.map { checkoutRepo.getPurchaseDetails(it.purchaseId) }
-                purchaseHistory.clear()
-                purchaseHistory.addAll(detailed.map { it.toPurchase(clubs) })
+            val summariesResult = runCatching { checkoutRepo.getMyPurchases() }
+            val bookingsResult = runCatching { checkoutRepo.getMyBookings() }
+
+            val summaries = summariesResult.getOrDefault(emptyList())
+            val userBookings = bookingsResult.getOrDefault(emptyList())
+            val bookingsByPurchaseId = userBookings
+                .mapNotNull { booking -> booking.purchaseId?.let { it to booking } }
+                .groupBy({ it.first }, { it.second })
+
+            val detailedPurchases = summaries.map { summary ->
+                runCatching { checkoutRepo.getPurchaseDetails(summary.purchaseId).toPurchase(clubs) }
+                    .getOrElse {
+                        summary.toFallbackPurchase(clubs, bookingsByPurchaseId[summary.purchaseId].orEmpty())
+                    }
+            }
+
+            val summarizedPurchaseIds = summaries.mapTo(mutableSetOf()) { it.purchaseId }
+            val bookingOnlyPurchases = bookingsByPurchaseId
+                .filterKeys { it !in summarizedPurchaseIds }
+                .map { (purchaseId, items) -> items.toPurchase(clubs, purchaseId) }
+
+            val orphanBookingPurchases = userBookings
+                .filter { it.purchaseId == null }
+                .map { it.toSyntheticPurchase(clubs) }
+
+            val mergedHistory = (detailedPurchases + bookingOnlyPurchases + orphanBookingPurchases)
+                .sortedByDescending { it.createdAt }
+
+            purchaseHistory.clear()
+            purchaseHistory.addAll(mergedHistory)
+
+            historyError = when {
+                mergedHistory.isNotEmpty() -> null
+                summariesResult.isFailure && bookingsResult.isFailure -> "Ошибка загрузки истории"
+                else -> null
+            }
             } catch (e: Exception) {
+                historyError = "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РёСЃС‚РѕСЂРёРё"
                 historyError = "Ошибка загрузки истории"
             } finally {
                 historyLoading = false
@@ -1458,7 +1493,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 status = ProductOrderStatus.NOT_READY,
                 items = productItems.map { i ->
                     ProductOrderItemSnapshot(
-                        productId = i.productId.toString(),
+                        productId = i.productId?.toString() ?: "",
                         title = i.name,
                         variant = null,
                         priceRub = i.unitRub,
@@ -1483,6 +1518,93 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    private fun PurchaseListItemDto.toFallbackPurchase(
+        clubs: List<Club>,
+        bookingItems: List<MyBookingHistoryItemDto>
+    ): Purchase {
+        val clubName = resolveClubName(clubs, clubId, bookingItems.firstOrNull()?.clubName)
+        return Purchase(
+            id = purchaseId.toString(),
+            clubId = clubId.toString(),
+            clubName = clubName,
+            createdAt = LocalDateTime.parse(createdAt),
+            bookingOrders = bookingItems.map { it.toBookingOrder(clubs) },
+            productOrder = null,
+            bookingTotalRub = bookingTotalRub,
+            productsTotalRub = productsTotalRub,
+            totalRub = totalRub,
+            paymentStatus = paymentStatus
+        )
+    }
+
+    private fun List<MyBookingHistoryItemDto>.toPurchase(
+        clubs: List<Club>,
+        purchaseId: Long
+    ): Purchase {
+        val first = first()
+        val bookingOrders = map { it.toBookingOrder(clubs) }
+        return Purchase(
+            id = purchaseId.toString(),
+            clubId = first.clubId.toString(),
+            clubName = resolveClubName(clubs, first.clubId, first.clubName),
+            createdAt = LocalDateTime.parse(first.createdAt),
+            bookingOrders = bookingOrders,
+            productOrder = null,
+            bookingTotalRub = bookingOrders.sumOf { it.totalRub },
+            productsTotalRub = 0,
+            totalRub = bookingOrders.sumOf { it.totalRub },
+            paymentStatus = first.paymentStatus.orHistoryPaymentStatus(bookingOrders.firstOrNull()?.status)
+        )
+    }
+
+    private fun MyBookingHistoryItemDto.toSyntheticPurchase(clubs: List<Club>): Purchase {
+        val bookingOrder = toBookingOrder(clubs)
+        return Purchase(
+            id = "booking-$bookingId",
+            clubId = clubId.toString(),
+            clubName = resolveClubName(clubs, clubId, clubName),
+            createdAt = LocalDateTime.parse(createdAt),
+            bookingOrders = listOf(bookingOrder),
+            productOrder = null,
+            bookingTotalRub = totalRub,
+            productsTotalRub = 0,
+            totalRub = totalRub,
+            paymentStatus = paymentStatus.orHistoryPaymentStatus(bookingOrder.status)
+        )
+    }
+
+    private fun MyBookingHistoryItemDto.toBookingOrder(clubs: List<Club>): BookingOrder {
+        val bookingStatus = status.toBookingStatus()
+        return BookingOrder(
+            id = bookingId.toString(),
+            clubId = clubId.toString(),
+            clubName = resolveClubName(clubs, clubId, clubName),
+            startAt = LocalDateTime.parse(startAt),
+            endAt = LocalDateTime.parse(endAt),
+            seatIds = seatIds.map { it.toString() },
+            seatLabels = seatLabels,
+            packageHours = packageHours,
+            rateRubPerHour = rateRubPerHourSnapshot,
+            totalRub = totalRub,
+            status = bookingStatus
+        )
+    }
+
+    private fun resolveClubName(clubs: List<Club>, clubId: Long, fallback: String?): String =
+        clubs.firstOrNull { it.id == clubId.toString() }?.name
+            ?: fallback?.takeIf { it.isNotBlank() }
+            ?: "Клуб"
+
+    private fun String.toBookingStatus(): BookingStatus =
+        runCatching { BookingStatus.valueOf(uppercase()) }.getOrDefault(BookingStatus.UPCOMING)
+
+    private fun String?.orHistoryPaymentStatus(bookingStatus: BookingStatus?): String =
+        when {
+            !this.isNullOrBlank() -> this
+            bookingStatus == BookingStatus.CANCELED -> "CANCELED"
+            else -> "PAID"
+        }
+
     fun startDateTime(d: BookingDraft): LocalDateTime =
         d.date.plusDays(d.startDayOffset.toLong()).atStartOfDay().plusMinutes(d.startMin.toLong())
 
@@ -1495,15 +1617,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * - иначе возвращаем TimeRange(startMin,endMin) (может быть "оборачивающим" через 00:00)
      */
     fun selectedTimeRangeForSeats(d: BookingDraft): TimeRange? {
-        val start = startDateTime(d)
-        val end = endDateTime(d)
-        val minutes = Duration.between(start, end).toMinutes()
-        if (minutes <= 0) return null
-        return if (minutes >= DAY_MIN.toLong()) {
-            TimeRange(0, DAY_MIN)
-        } else {
-            TimeRange(d.startMin, d.endMin)
-        }
+        return selectedTimeRangeForSeats(d.startDayOffset, d.startMin, d.endDayOffset, d.endMin)
     }
 
     /**
@@ -1543,7 +1657,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun cartTotal(clubId: String = selectedClubId): Int =
-        cartFor(clubId).productLines.sumOf { it.price * it.qty }
+        productLinesTotal(cartFor(clubId).productLines)
 
     val favoriteClubIds = mutableStateListOf<String>()
 
@@ -1606,6 +1720,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (user != null) {
             loadShopData(force = true)
             loadTimePackages(force = true)
+            loadSeatPrices(force = true)
             syncCartProducts(force = true)
         }
     }
@@ -1675,9 +1790,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * Формула: baseRate + max(0, seatTypePrice - standardRate)
      * Пример: пакет 80 ₽/ч, стандарт 100 ₽/ч, VIP 110 ₽/ч → VIP = 80 + (110-100) = 90 ₽/ч
      */
-    fun effectiveRateForSeatType(seatType: com.example.computerclub.model.SeatType): Int {
+    fun effectiveRateForSeatType(
+        seatType: com.example.computerclub.model.SeatType,
+        packageHours: Int? = bookingDraft.packageHours
+    ): Int {
         val standard = standardRateRubPerHour ?: 0
-        val baseRate = bookingRateRubPerHour(bookingDraft.packageHours)
+        val baseRate = bookingRateRubPerHour(packageHours)
         val seatTypePrice = seatPrices.firstOrNull { it.seatType == seatType.name }?.pricePerHourRub ?: standard
         val surcharge = maxOf(0, seatTypePrice - standard)
         return baseRate + surcharge

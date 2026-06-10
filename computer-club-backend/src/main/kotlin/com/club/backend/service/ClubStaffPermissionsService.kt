@@ -2,12 +2,11 @@ package com.club.backend.service
 
 import com.club.backend.api.dto.admin.ClubStaffPermissionsResponse
 import com.club.backend.api.dto.admin.PermissionOverrideView
-import com.club.backend.domain.entity.ClubUserPermissionOverrideEntity
-import com.club.backend.domain.entity.ClubUserPermissionOverrideId
+import com.club.backend.domain.entity.ClubPermissionRuleEntity
+import com.club.backend.domain.entity.ClubPermissionRuleType
 import com.club.backend.domain.enum.ClubPermission
-import com.club.backend.repository.ClubRolePermissionRepository
+import com.club.backend.repository.ClubPermissionRuleRepository
 import com.club.backend.repository.ClubStaffRepository
-import com.club.backend.repository.ClubUserPermissionOverrideRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
@@ -17,8 +16,7 @@ import java.time.OffsetDateTime
 @Service
 class ClubStaffPermissionsService(
     private val clubStaffRepository: ClubStaffRepository,
-    private val clubRolePermissionRepository: ClubRolePermissionRepository,
-    private val clubUserPermissionOverrideRepository: ClubUserPermissionOverrideRepository,
+    private val clubPermissionRuleRepository: ClubPermissionRuleRepository,
     private val auditService: AuditService
 ) {
 
@@ -28,16 +26,20 @@ class ClubStaffPermissionsService(
         val role = staff?.role
 
         val rolePermissions = if (role == null) emptyList() else
-            clubRolePermissionRepository.findAllByIdRole(role).map { it.id.permission }.distinct().sortedBy { it.name }
+            clubPermissionRuleRepository
+                .findAllByRuleTypeAndRoleAndGrantedTrue(ClubPermissionRuleType.ROLE_DEFAULT, role)
+                .map { it.permission }
+                .distinct()
+                .sortedBy { it.name }
 
-        val overrides = clubUserPermissionOverrideRepository.findByIdClubIdAndIdUserId(clubId, userId)
+        val overrides = clubPermissionRuleRepository.findOverridesByClubIdAndUserId(clubId, userId)
         val overrideViews = overrides
-            .map { PermissionOverrideView(it.id.permission, it.granted) }
+            .map { PermissionOverrideView(it.permission, it.granted) }
             .sortedBy { it.permission.name }
 
         val effective = rolePermissions.toMutableSet()
         overrides.forEach {
-            if (it.granted) effective.add(it.id.permission) else effective.remove(it.id.permission)
+            if (it.granted) effective.add(it.permission) else effective.remove(it.permission)
         }
 
         return ClubStaffPermissionsResponse(
@@ -53,17 +55,19 @@ class ClubStaffPermissionsService(
     @Transactional
     fun setOverride(actorUserId: Long, clubId: Long, userId: Long, permission: ClubPermission, granted: Boolean) {
         // пермишены назначаем только участникам стаффа — иначе модель теряет гарантии
-        clubStaffRepository.findByIdClubIdAndIdUserId(clubId, userId)
+        val staff = clubStaffRepository.findByIdClubIdAndIdUserId(clubId, userId)
             .orElseThrow { ResponseStatusException(HttpStatus.BAD_REQUEST, "User $userId is not a staff member of club $clubId") }
 
-        val id = ClubUserPermissionOverrideId(clubId = clubId, userId = userId, permission = permission)
-        val existing = clubUserPermissionOverrideRepository.findById(id).orElse(null)
+        val existing = clubPermissionRuleRepository.findOverride(clubId, userId, permission).orElse(null)
         val now = OffsetDateTime.now()
 
         if (existing == null) {
-            clubUserPermissionOverrideRepository.save(
-                ClubUserPermissionOverrideEntity(
-                    id = id,
+            clubPermissionRuleRepository.save(
+                ClubPermissionRuleEntity(
+                    ruleType = ClubPermissionRuleType.USER_OVERRIDE,
+                    club = staff.club,
+                    user = staff.user,
+                    permission = permission,
                     granted = granted,
                     createdAt = now,
                     updatedAt = now
@@ -78,7 +82,7 @@ class ClubStaffPermissionsService(
             )
             existing.granted = granted
             existing.updatedAt = now
-            clubUserPermissionOverrideRepository.save(existing)
+            clubPermissionRuleRepository.save(existing)
 
             val after = mapOf(
                 "clubId" to clubId,
@@ -118,8 +122,7 @@ class ClubStaffPermissionsService(
 
     @Transactional
     fun deleteOverride(actorUserId: Long, clubId: Long, userId: Long, permission: ClubPermission) {
-        val id = ClubUserPermissionOverrideId(clubId = clubId, userId = userId, permission = permission)
-        val existing = clubUserPermissionOverrideRepository.findById(id).orElse(null)
+        val existing = clubPermissionRuleRepository.findOverride(clubId, userId, permission).orElse(null)
         if (existing != null) {
             val before = mapOf(
                 "clubId" to clubId,
@@ -127,7 +130,7 @@ class ClubStaffPermissionsService(
                 "permission" to permission.name,
                 "granted" to existing.granted
             )
-            clubUserPermissionOverrideRepository.deleteById(id)
+            clubPermissionRuleRepository.delete(existing)
             auditService.log(
                 actorUserId = actorUserId,
                 clubId = clubId,

@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Badge, Dropdown, Layout } from 'antd'
+import { Badge, Layout } from 'antd'
 import {
   ShoppingCartOutlined,
   UserOutlined,
-  LogoutOutlined,
   HistoryOutlined,
   HomeOutlined,
   MenuOutlined,
   CloseOutlined,
 } from '@ant-design/icons'
-import { Link, Outlet, useNavigate, useLocation, useMatch } from 'react-router-dom'
+import { Link, Outlet, useLocation, useMatch, useNavigate } from 'react-router-dom'
 import { useClient } from '../contexts/ClientContext'
 import { useAuth } from '../contexts/AuthContext'
 import { tokens } from '../theme/tokens'
@@ -17,30 +16,9 @@ import { tokens } from '../theme/tokens'
 const { Header, Content } = Layout
 
 const NAV_ITEMS = [
-  { key: '/clubs',   label: 'Клубы',   icon: <HomeOutlined /> },
+  { key: '/clubs', label: 'Клубы', icon: <HomeOutlined /> },
   { key: '/history', label: 'История', icon: <HistoryOutlined /> },
 ]
-
-// --- Аватар пользователя ---
-
-function UserAvatar({ phone }: { phone: string | null | undefined }) {
-  const label = phone ? phone.replace(/\D/g, '').slice(-2) : '?'
-  const colors = ['#4F46E5', '#7C3AED', '#059669', '#DC2626', '#D97706', '#2563EB']
-  const bg = colors[parseInt(label, 10) % colors.length] ?? tokens.colors.primary
-  return (
-    <div style={{
-      width: 32, height: 32, borderRadius: '50%',
-      background: bg,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 12, fontWeight: 700, color: '#fff',
-      cursor: 'pointer', userSelect: 'none', flexShrink: 0,
-    }}>
-      {label}
-    </div>
-  )
-}
-
-// --- Основной компонент ---
 
 export default function ClientLayout() {
   const { cartCount, refreshCartCount } = useClient()
@@ -62,17 +40,11 @@ export default function ClientLayout() {
     if (currentClubId) refreshCartCount(currentClubId)
   }, [currentClubId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // закрываем мобильное меню при смене страницы
-  useEffect(() => { setMobileMenuOpen(false) }, [location.pathname])
+  useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [location.pathname])
 
   const isLoggedIn = user !== null
-
-  function handleLogout() {
-    logout()
-    navigate('/')
-  }
-
-  // определяем активный пункт навигации
   const isRoot = location.pathname === '/'
   const activeKey = isRoot
     ? '/clubs'
@@ -80,32 +52,34 @@ export default function ClientLayout() {
 
   return (
     <Layout style={{ minHeight: '100vh', background: tokens.colors.background }}>
-      {/* Header */}
-      <Header style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 0,
-        padding: '0 24px',
-        background: tokens.colors.surface,
-        borderBottom: `1px solid ${tokens.colors.border}`,
-        position: 'sticky',
-        top: 0,
-        zIndex: 100,
-        height: 60,
-        boxShadow: '0 1px 4px rgba(15, 23, 42, 0.05)',
-      }}>
-        {/* Логотип */}
+      <Header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0,
+          padding: '0 24px',
+          background: tokens.colors.surface,
+          borderBottom: `1px solid ${tokens.colors.border}`,
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
+          height: 60,
+          boxShadow: '0 1px 4px rgba(15, 23, 42, 0.05)',
+        }}
+      >
         <Link to="/" style={{ textDecoration: 'none', flexShrink: 0, marginRight: 32 }}>
-          <span style={{
-            fontSize: 16, fontWeight: 800,
-            color: tokens.colors.primary,
-            letterSpacing: '-0.4px',
-          }}>
+          <span
+            style={{
+              fontSize: 16,
+              fontWeight: 800,
+              color: tokens.colors.primary,
+              letterSpacing: '-0.4px',
+            }}
+          >
             Компьютерный клуб
           </span>
         </Link>
 
-        {/* Навигация — десктоп */}
         <nav style={{ display: 'flex', gap: 4, flex: 1 }} className="client-nav-desktop">
           {NAV_ITEMS.map((item) => {
             const active = activeKey === item.key
@@ -137,16 +111,20 @@ export default function ClientLayout() {
           })}
         </nav>
 
-        {/* Правая часть */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 'auto' }}>
-          {/* Корзина */}
           <Badge count={cartCount} size="small" offset={[-3, 3]}>
             <button
-              onClick={() => currentClubId ? navigate(`/clubs/${currentClubId}/cart`) : navigate('/clubs')}
+              onClick={() => (currentClubId ? navigate(`/clubs/${currentClubId}/cart`) : navigate('/clubs'))}
               style={{
-                width: 38, height: 38, borderRadius: tokens.radius.sm,
-                background: 'transparent', border: 'none', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 38,
+                height: 38,
+                borderRadius: tokens.radius.sm,
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 color: tokens.colors.textSecondary,
                 transition: 'background 0.15s',
               }}
@@ -158,34 +136,32 @@ export default function ClientLayout() {
             </button>
           </Badge>
 
-          {/* Пользователь */}
           {isLoggedIn ? (
-            <Dropdown
-              menu={{
-                items: [
-                  {
-                    key: 'phone',
-                    disabled: true,
-                    label: (
-                      <span style={{ fontSize: 12, color: tokens.colors.textMuted }}>
-                        {user.phone ?? 'Без телефона'}
-                      </span>
-                    ),
-                  },
-                  { type: 'divider' },
-                  { key: 'profile', icon: <UserOutlined />, label: 'Профиль', onClick: () => navigate('/profile') },
-                  { key: 'history', icon: <HistoryOutlined />, label: 'История заказов', onClick: () => navigate('/history') },
-                  { type: 'divider' },
-                  { key: 'logout', icon: <LogoutOutlined />, label: 'Выйти', danger: true, onClick: handleLogout },
-                ],
+            <button
+              onClick={() => navigate('/profile')}
+              style={{
+                height: 38,
+                padding: '0 14px',
+                borderRadius: tokens.radius.sm,
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                color: tokens.colors.textSecondary,
+                fontSize: 14,
+                fontWeight: 600,
+                transition: 'background 0.15s',
               }}
-              placement="bottomRight"
-              trigger={['click']}
+              onMouseEnter={(e) => { e.currentTarget.style.background = tokens.colors.surfaceAlt }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              title="Профиль"
             >
-              <div style={{ cursor: 'pointer' }}>
-                <UserAvatar phone={user.phone} />
-              </div>
-            </Dropdown>
+              <UserOutlined style={{ fontSize: 16 }} />
+              <span className="client-profile-label">Профиль</span>
+            </button>
           ) : (
             <button
               onClick={() => navigate(`/login?from=${encodeURIComponent(location.pathname)}`)}
@@ -207,14 +183,19 @@ export default function ClientLayout() {
             </button>
           )}
 
-          {/* Гамбургер — мобильный */}
           <button
             onClick={() => setMobileMenuOpen((v) => !v)}
             className="client-nav-hamburger"
             style={{
-              width: 38, height: 38, borderRadius: tokens.radius.sm,
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              display: 'none', alignItems: 'center', justifyContent: 'center',
+              width: 38,
+              height: 38,
+              borderRadius: tokens.radius.sm,
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'none',
+              alignItems: 'center',
+              justifyContent: 'center',
               color: tokens.colors.textSecondary,
             }}
           >
@@ -223,12 +204,14 @@ export default function ClientLayout() {
         </div>
       </Header>
 
-      {/* Мобильное меню */}
       {mobileMenuOpen && (
         <div
           className="client-nav-mobile"
           style={{
-            position: 'fixed', top: 60, left: 0, right: 0,
+            position: 'fixed',
+            top: 60,
+            left: 0,
+            right: 0,
             background: tokens.colors.surface,
             borderBottom: `1px solid ${tokens.colors.border}`,
             zIndex: 99,
@@ -243,13 +226,18 @@ export default function ClientLayout() {
                 key={item.key}
                 onClick={() => navigate(item.key)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  width: '100%', padding: '12px 24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  width: '100%',
+                  padding: '12px 24px',
                   background: active ? tokens.colors.primarySoft : 'transparent',
-                  border: 'none', cursor: 'pointer',
+                  border: 'none',
+                  cursor: 'pointer',
                   color: active ? tokens.colors.primary : tokens.colors.text,
                   fontWeight: active ? 600 : 400,
-                  fontSize: 15, textAlign: 'left',
+                  fontSize: 15,
+                  textAlign: 'left',
                 }}
               >
                 {item.icon}
@@ -257,26 +245,49 @@ export default function ClientLayout() {
               </button>
             )
           })}
+          {isLoggedIn ? (
+            <button
+              onClick={() => navigate('/profile')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                width: '100%',
+                padding: '12px 24px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: tokens.colors.text,
+                fontWeight: 500,
+                fontSize: 15,
+                textAlign: 'left',
+              }}
+            >
+              <UserOutlined />
+              Профиль
+            </button>
+          ) : null}
         </div>
       )}
 
-      {/* Контент */}
-      <Content style={{
-        padding: '32px 24px',
-        width: '100%',
-        maxWidth: 1120,
-        margin: '0 auto',
-        boxSizing: 'border-box',
-      }}>
+      <Content
+        style={{
+          padding: '32px 24px',
+          width: '100%',
+          maxWidth: 1120,
+          margin: '0 auto',
+          boxSizing: 'border-box',
+        }}
+      >
         <Outlet />
       </Content>
 
-      {/* Адаптив: прячем десктопную навигацию, показываем гамбургер */}
       <style>{`
         @media (max-width: 600px) {
           .client-nav-desktop { display: none !important; }
           .client-nav-hamburger { display: flex !important; }
           .client-nav-mobile { display: block; }
+          .client-profile-label { display: none; }
         }
       `}</style>
     </Layout>

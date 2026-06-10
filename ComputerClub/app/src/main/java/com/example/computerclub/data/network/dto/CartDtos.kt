@@ -46,7 +46,8 @@ data class CartBookingLineResponseDto(
     val startAt: String,
     val endAt: String,
     val packageHours: Int? = null,
-    val seatIds: List<Long> = emptyList()
+    val seatIds: List<Long> = emptyList(),
+    val lineTotalRub: Int? = null
 )
 
 @Serializable

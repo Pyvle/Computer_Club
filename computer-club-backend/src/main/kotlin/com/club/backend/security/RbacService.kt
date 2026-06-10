@@ -1,10 +1,10 @@
 package com.club.backend.security
 
 import com.club.backend.domain.entity.ClubRole
+import com.club.backend.domain.entity.ClubPermissionRuleType
 import com.club.backend.domain.enum.ClubPermission
+import com.club.backend.repository.ClubPermissionRuleRepository
 import com.club.backend.repository.ClubStaffRepository
-import com.club.backend.repository.ClubRolePermissionRepository
-import com.club.backend.repository.ClubUserPermissionOverrideRepository
 import org.springframework.security.core.Authentication
 import org.springframework.stereotype.Component
 
@@ -15,8 +15,7 @@ import org.springframework.stereotype.Component
 @Component("rbac")
 class RbacService(
     private val clubStaffRepository: ClubStaffRepository,
-    private val clubRolePermissionRepository: ClubRolePermissionRepository,
-    private val clubUserPermissionOverrideRepository: ClubUserPermissionOverrideRepository
+    private val clubPermissionRuleRepository: ClubPermissionRuleRepository
 ) {
 
     private fun userId(auth: Authentication): Long = auth.principal.toString().toLong()
@@ -30,7 +29,7 @@ class RbacService(
      * Порядок проверки:
      * 1) GLOBAL_ADMIN → всегда true
      * 2) персональный override (clubId, userId, permission) → granted/denied
-     * 3) маппинг роли на пермишены (club_role_permissions)
+     * 3) маппинг роли на пермишены (club_permission_rules)
      */
     fun hasClubPermission(auth: Authentication, clubId: Long, permission: ClubPermission): Boolean {
         if (isGlobalAdmin(auth)) return true
@@ -40,12 +39,16 @@ class RbacService(
         val role = clubStaffRepository.findByIdClubIdAndIdUserId(clubId, uid).orElse(null)?.role
             ?: return false
 
-        val override = clubUserPermissionOverrideRepository
-            .findByIdClubIdAndIdUserIdAndIdPermission(clubId, uid, permission)
+        val override = clubPermissionRuleRepository
+            .findOverride(clubId, uid, permission)
             .orElse(null)
         if (override != null) return override.granted
 
-        return clubRolePermissionRepository.existsByIdRoleAndIdPermission(role, permission)
+        return clubPermissionRuleRepository.existsByRuleTypeAndRoleAndPermissionAndGrantedTrue(
+            ClubPermissionRuleType.ROLE_DEFAULT,
+            role,
+            permission
+        )
     }
 
     fun canManageClub(auth: Authentication, clubId: Long): Boolean {
